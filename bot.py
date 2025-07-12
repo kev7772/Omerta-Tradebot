@@ -20,13 +20,13 @@ def webhook():
         text = data["message"].get("text", "")
 
         if text == "/start":
-            send_message(chat_id, "Willkommen Bruder, OmertaBot ist aktiv.")
+            send_message(chat_id, "Willkommen Bruder, OmertaBot ist aktiv ✅")
         elif text == "/status":
             send_message(chat_id, "Status: Alles unter Kontrolle 💹")
         elif text == "/panic":
-            send_message(chat_id, "PANIKMODUS AKTIVIERT 🚨 Trades werden gestoppt.")
+            send_message(chat_id, "⚠️ Panikmodus aktiviert! Alle Trades gestoppt.")
         elif text == "/report":
-            send_message(chat_id, "📄 Dein PDF-Bericht wird erstellt... (bald verfügbar)")
+            send_message(chat_id, "📄 Bericht folgt in Kürze... (PDF-Modul wird vorbereitet)")
         else:
             send_message(chat_id, "Unbekannter Befehl Bruder.")
 
@@ -37,6 +37,5 @@ def send_message(chat_id, text):
     requests.post(API_URL, json=payload)
 
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 5000))  # Railway stellt PORT bereit!
     app.run(host="0.0.0.0", port=port)
