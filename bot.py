@@ -9,7 +9,7 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 @app.route("/")
 def home():
-    return "OmertaBot läuft über Replit ✅", 200
+    return "OmertaBot läuft über Railway ✅", 200
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -37,4 +37,6 @@ def send_message(chat_id, text):
     requests.post(API_URL, json=payload)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
