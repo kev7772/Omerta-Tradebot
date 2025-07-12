@@ -3,7 +3,7 @@ import requests
 
 app = Flask(__name__)
 
-BOT_TOKEN = "7758825681:AAHDJOZBxrEgbX_TCD30GmzjVBqCxPLQB-k"
+BOT_TOKEN = "7758825681:AAFGozC_plesE49EicIp6HtnZPpElar0hxQ"
 
 @app.route("/")
 def home():
