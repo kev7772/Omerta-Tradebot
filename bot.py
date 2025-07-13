@@ -1,10 +1,10 @@
 from flask import Flask, request
 import requests
-import os
 
 app = Flask(__name__)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+# Neuer Bot-Token direkt im Code gesetzt
+BOT_TOKEN = "7758825681:AAE6z7kchN2EER40zpe0ph_MZjE0BKfGb60"
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 @app.route("/")
@@ -37,5 +37,4 @@ def send_message(chat_id, text):
     requests.post(API_URL, json=payload)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
