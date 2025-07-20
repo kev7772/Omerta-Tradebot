@@ -4,7 +4,7 @@ from flask import Flask, request
 
 # ⚠️ Hinweis: Token & Admin-ID sind hart codiert. Später besser in Environment-Variablen auslagern.
 BOT_TOKEN = "7622848441:AAGiKi2Kpe4K-qUvmDzoj1ECgYYmsvjOmyA"
-ADMIN_ID = "1269624949"
+ADMIN_ID = 1269624949
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
@@ -23,7 +23,7 @@ def telegram_webhook():
 
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    if str(message.chat.id) != ADMIN_ID:
+    if message.chat.id != ADMIN_ID:
         bot.send_message(message.chat.id, "Zugriff verweigert.")
         return
     bot.send_message(message.chat.id, "Willkommen beim OmertaTradeBot 🤖 /status für Zustand.")
