@@ -25,6 +25,21 @@ def webhook():
     return '', 403
 
 # Telegram Commands
+@bot.message_handler(commands=['enable_trading'])
+def enable_trading(message):
+    global ALLOW_TRADING
+    if message.chat.id != ADMIN_ID:
+        return
+    ALLOW_TRADING = True
+    bot.send_message(message.chat.id, "✅ Trading-Funktion aktiviert!")
+
+@bot.message_handler(commands=['disable_trading'])
+def disable_trading(message):
+    global ALLOW_TRADING
+    if message.chat.id != ADMIN_ID:
+        return
+    ALLOW_TRADING = False
+    bot.send_message(message.chat.id, "🔒 Trading-Funktion deaktiviert!")
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     if message.chat.id != ADMIN_ID:
