@@ -1,4 +1,5 @@
-flask
+Flask
 python-dotenv
 requests
 python-binance
+pyTelegramBotAPI
