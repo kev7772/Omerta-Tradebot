@@ -18,3 +18,15 @@ def get_trading_decision():
         else:
             simulated_actions.append(f"{p['coin']}: 🤔 Hätte gehalten")
     return simulated_actions
+
+def recommend_trades():
+    profits = get_profit_estimates()
+    recommendations = []
+    for p in profits:
+        if p['percent'] > 10:
+            recommendations.append(f"{p['coin']}: ✅ gute Performance – beobachten")
+        elif p['percent'] < -20:
+            recommendations.append(f"{p['coin']}: ⚠️ instabil – nicht anfassen")
+        else:
+            recommendations.append(f"{p['coin']}: ⏳ abwarten")
+    return recommendations
