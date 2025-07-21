@@ -61,3 +61,44 @@ def run_flask():
 
 if __name__ == '__main__':
     threading.Thread(target=run_flask).start()
+
+from trading import get_portfolio, get_profit_estimates
+from logic import should_trigger_panic, get_trading_decision
+
+@bot.message_handler(commands=['portfolio'])
+def cmd_portfolio(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    holdings = get_portfolio()
+    text = "📊 Dein Portfolio:\n"
+    for h in holdings:
+        text += f"{h['coin']}: {h['amount']} → {h['value']} €\n"
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(commands=['profit'])
+def cmd_profit(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    profits = get_profit_estimates()
+    text = "💰 Buchgewinne:\n"
+    for p in profits:
+        text += f"{p['coin']}: {p['profit']} € ({p['percent']}%)\n"
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(commands=['panic'])
+def cmd_panic(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    trigger, coin = should_trigger_panic()
+    if trigger:
+        bot.send_message(message.chat.id, f"⚠️ Notbremse empfohlen bei {coin} (über -25%)!")
+    else:
+        bot.send_message(message.chat.id, "✅ Keine Notbremse nötig.")
+
+@bot.message_handler(commands=['tradelogic'])
+def cmd_tradelogic(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    actions = get_trading_decision()
+    text = "🤖 Simulation:\n" + "\n".join(actions)
+    bot.send_message(message.chat.id, text)
