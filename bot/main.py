@@ -102,3 +102,45 @@ def cmd_tradelogic(message):
     actions = get_trading_decision()
     text = "🤖 Simulation:\n" + "\n".join(actions)
     bot.send_message(message.chat.id, text)
+
+import schedule
+import time
+from history import save_daily_snapshot
+from simulator import run_simulation
+from logic import recommend_trades
+
+# Telegram-Befehle
+
+@bot.message_handler(commands=['loghistory'])
+def cmd_loghistory(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    save_daily_snapshot()
+    bot.send_message(message.chat.id, "📊 History gespeichert.")
+
+@bot.message_handler(commands=['simulate'])
+def cmd_simulate(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    results = run_simulation()
+    text = "🧪 Simulationsergebnisse:\n" + "\n".join(results)
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(commands=['recommend'])
+def cmd_recommend(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    recs = recommend_trades()
+    text = "📌 Empfehlungen:\n" + "\n".join(recs)
+    bot.send_message(message.chat.id, text)
+
+# Tägliches Logging um 00:01 Uhr
+def run_scheduler():
+    schedule.every().day.at("00:01").do(save_daily_snapshot)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+# Threads starten (damit alles wach bleibt)
+threading.Thread(target=run_flask).start()
+threading.Thread(target=run_scheduler).start()
