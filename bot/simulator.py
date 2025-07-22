@@ -1,15 +1,39 @@
 from autolearn import learn_from_decision
 from trading import get_portfolio
 from logic import get_trading_decision
+from datetime import datetime
 import random
+import json
+import os
 
 # Dummy-Funktion zum simulieren prozentualer Kursentwicklung
 def simulate_coin_change():
-    return round(random.uniform(-15, 15), 2)  # -15 % bis +15 %
+    return round(random.uniform(-15, 15), 2)  # -15 % bis +15 %
+
+# Entscheidungs-Logik zur späteren Bewertung
+DECISION_LOG = "decision_log.json"
+
+def log_future_evaluation(coin, decision):
+    entry = {
+        "coin": coin,
+        "decision": decision,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    if os.path.exists(DECISION_LOG):
+        with open(DECISION_LOG, "r") as f:
+            logs = json.load(f)
+    else:
+        logs = []
+
+    logs.append(entry)
+
+    with open(DECISION_LOG, "w") as f:
+        json.dump(logs, f, indent=2)
 
 def run_simulation():
     portfolio = get_portfolio()
-    decisions = get_trading_decision()  # z. B. ['BTC: 🔼 Hätte verkauft', 'ETH: 🤔 Hätte gehalten', ...]
+    decisions = get_trading_decision()  # z. B. ['BTC: 🔼 Hätte verkauft', 'ETH: 🤔 Hätte gehalten']
 
     for entry in decisions:
         if ":" not in entry:
@@ -17,7 +41,6 @@ def run_simulation():
         coin, raw_decision = entry.split(":", 1)
         coin = coin.strip()
 
-        # Entscheidung aus Symbol erkennen
         if "🔼" in raw_decision:
             decision = "sell"
         elif "🔽" in raw_decision:
@@ -27,5 +50,9 @@ def run_simulation():
         else:
             continue
 
+        # Simulation
         simulated_change = simulate_coin_change()
         learn_from_decision(coin, decision, simulated_change)
+
+        # Zukünftige Bewertung vormerken
+        log_future_evaluation(coin, decision)
