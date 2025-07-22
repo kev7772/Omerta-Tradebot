@@ -21,6 +21,8 @@ def get_portfolio():
         if total > 0 and asset['asset'] != 'USDT':
             symbol = asset['asset'] + 'USDT'
             current_price = price_map.get(symbol, 0)
+            if current_price == 0:
+                continue  # Überspringen, wenn kein Preis vorhanden
             holdings.append({
                 'coin': asset['asset'],
                 'amount': total,
@@ -34,10 +36,13 @@ def get_profit_estimates():
     data = get_portfolio()
     result = []
     for coin in data:
-        # Simulierter Einstiegspreis
-        buy_price = coin['price'] * 0.85
+        if coin['price'] == 0:
+            continue  # Überspringen, wenn kein Preis vorhanden
+        buy_price = coin['price'] * 0.85  # Simulierter Einstiegspreis
         current_value = coin['price'] * coin['amount']
         buy_value = buy_price * coin['amount']
+        if buy_value == 0:
+            continue  # Schutz gegen Division durch 0
         profit = current_value - buy_value
         result.append({
             'coin': coin['coin'],
