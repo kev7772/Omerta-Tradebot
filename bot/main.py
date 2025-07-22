@@ -136,23 +136,24 @@ def cmd_sentiment(message):
 def cmd_indicators(message):
     if message.chat.id != ADMIN_ID:
         return
-    klines = client.get_klines(symbol='BTCUSDT', interval='1h', limit=100)
-    df = pd.DataFrame(klines, columns=[
-        "timestamp", "open", "high", "low", "close", "volume",
-        "close_time", "quote_asset_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
-    ])
-    df = df.astype(float)
+    try:
+        klines = client.get_klines(symbol='BTCUSDT', interval='1h', limit=100)
+        df = pd.DataFrame(klines, columns=[
+            "timestamp", "open", "high", "low", "close", "volume",
+            "close_time", "quote_asset_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
+        ])
+        df = df.astype(float)
 
-    result = calculate_indicators(df)
-    text = f"🧠 Technische Analyse BTCUSDT\n"
-    text += f"RSI: {result['rsi']:.2f}\n"
-    text += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}\n"
-    text += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}\n"
-    text += f"Bollinger%: {result['bb_percent']:.2f}"
-    
-    bot.send_message(message.chat.id, text)
+        result = calculate_indicators(df)
+        text = f"🧠 Technische Analyse BTCUSDT\n"
+        text += f"RSI: {result['rsi']:.2f}\n"
+        text += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}\n"
+        text += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}\n"
+        text += f"Bollinger%: {result['bb_percent']:.2f}"
+        
+        bot.send_message(message.chat.id, text)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Fehler bei /indicators: {e}")
+        bot.send_message(message.chat.id, f"❌ Fehler bei /indicators:\n{str(e)}")
 
 # === Scheduler-Funktion im Hintergrund starten ===
 def run_scheduler():
