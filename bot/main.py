@@ -138,21 +138,33 @@ def cmd_indicators(message):
     if message.chat.id != ADMIN_ID:
         return
     try:
+        from binance.client import Client
+
+        API_KEY = os.getenv("BINANCE_API_KEY")
+        API_SECRET = os.getenv("BINANCE_API_SECRET")
+
+        # Client wird direkt hier erzeugt – sicher & unabhängig
+        client = Client(API_KEY, API_SECRET)
+
         klines = client.get_klines(symbol='BTCUSDT', interval='1h', limit=100)
+        import pandas as pd  # nur falls oben nicht schon drin
         df = pd.DataFrame(klines, columns=[
             "timestamp", "open", "high", "low", "close", "volume",
             "close_time", "quote_asset_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
         ])
         df = df.astype(float)
 
+        from indicators import calculate_indicators  # import hier reinziehen, falls nötig
         result = calculate_indicators(df)
+
         text = f"🧠 Technische Analyse BTCUSDT\n"
         text += f"RSI: {result['rsi']:.2f}\n"
         text += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}\n"
         text += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}\n"
         text += f"Bollinger%: {result['bb_percent']:.2f}"
-        
+
         bot.send_message(message.chat.id, text)
+
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Fehler bei /indicators:\n{str(e)}")
 
