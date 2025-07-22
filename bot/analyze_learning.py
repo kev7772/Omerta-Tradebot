@@ -21,3 +21,16 @@ def generate_learning_stats():
         summary.append(f"{coin}: ✅ {s['correct']} / ❌ {s['wrong']} → {accuracy}% richtig")
 
     return summary
+
+def generate_learning_stats():
+    try:
+        with open("learn_log.json", "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return ["⚠️ Kein Lernlog gefunden oder Datei fehlerhaft."]
+
+    if not data:
+        return ["ℹ️ Noch keine Lern-Daten vorhanden."]
+
+    stats = defaultdict(lambda: {"correct": 0, "wrong": 0})
+    ...
