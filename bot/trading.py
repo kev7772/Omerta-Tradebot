@@ -109,3 +109,18 @@ def get_current_prices():
     except Exception as e:
         print(f"Fehler beim Abrufen aktueller Preise: {e}")
         return {}
+
+def simulate_trade(decision, balance, portfolio, prices):
+    for coin, action in decision.items():
+        price = prices.get(coin, 0)
+        if price == 0:
+            continue
+        if action == "BUY" and balance > 10:
+            qty = round((balance * 0.3) / price, 4)
+            portfolio[coin] = portfolio.get(coin, 0) + qty
+            balance -= qty * price
+        elif action == "SELL" and coin in portfolio:
+            balance += portfolio[coin] * price
+            portfolio[coin] = 0
+    return {"balance": round(balance, 2), "portfolio": portfolio}
+
