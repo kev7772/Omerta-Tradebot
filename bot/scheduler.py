@@ -1,4 +1,3 @@
-# scheduler.py
 import schedule
 import time
 from live_logger import write_history
