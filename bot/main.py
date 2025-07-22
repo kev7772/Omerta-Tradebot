@@ -14,8 +14,8 @@ from indicators import calculate_indicators
 from binance.client import Client
 
 # === Bot & Server Setup ===
-BOT_TOKEN = "7622848441:AAGiKi2Kpe4K-qUvmDzoj1ECgYYmsvjOmyA"
-ADMIN_ID = 1269624949
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
