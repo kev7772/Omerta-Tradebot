@@ -2,19 +2,25 @@ import os
 import threading
 import telebot
 from flask import Flask, request
+import schedule
+import time
+from live_logger import write_history
+from simulator import run_simulation
+from logic import recommend_trades
+from trading import get_portfolio, get_profit_estimates
+from logic import should_trigger_panic, get_trading_decision
 
+# === Bot & Server Setup ===
 BOT_TOKEN = "7622848441:AAGiKi2Kpe4K-qUvmDzoj1ECgYYmsvjOmyA"
 ADMIN_ID = 1269624949
-
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Root Check
+# === Flask Endpunkte ===
 @app.route('/')
 def index():
     return 'OmertaTradeBot Webhook aktiv'
 
-# Telegram Webhook Endpoint
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -24,7 +30,20 @@ def webhook():
         return '', 200
     return '', 403
 
-# Telegram Commands
+# === Telegram-Befehle ===
+@bot.message_handler(commands=['start'])
+def cmd_start(message):
+    if message.chat.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "Zugriff verweigert.")
+        return
+    bot.send_message(message.chat.id, "Willkommen beim OmertaTradeBot 🤖")
+
+@bot.message_handler(commands=['status'])
+def cmd_status(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    bot.send_message(message.chat.id, "Bot läuft ✅")
+
 @bot.message_handler(commands=['enable_trading'])
 def enable_trading(message):
     global ALLOW_TRADING
@@ -40,30 +59,6 @@ def disable_trading(message):
         return
     ALLOW_TRADING = False
     bot.send_message(message.chat.id, "🔒 Trading-Funktion deaktiviert!")
-@bot.message_handler(commands=['start'])
-def cmd_start(message):
-    if message.chat.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "Zugriff verweigert.")
-        return
-    bot.send_message(message.chat.id, "Willkommen beim OmertaTradeBot 🤖")
-
-@bot.message_handler(commands=['status'])
-def cmd_status(message):
-    if message.chat.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "Zugriff verweigert.")
-        return
-    bot.send_message(message.chat.id, "Bot läuft ✅")
-
-# Flask in Thread starten (damit Bot auch aktiv bleibt)
-def run_flask():
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-
-if __name__ == '__main__':
-    threading.Thread(target=run_flask).start()
-
-from trading import get_portfolio, get_profit_estimates
-from logic import should_trigger_panic, get_trading_decision
 
 @bot.message_handler(commands=['portfolio'])
 def cmd_portfolio(message):
@@ -103,28 +98,19 @@ def cmd_tradelogic(message):
     text = "🤖 Simulation:\n" + "\n".join(actions)
     bot.send_message(message.chat.id, text)
 
-import schedule
-import time
-from live_logger import write_history
-from simulator import run_simulation
-from logic import recommend_trades
-
-# Telegram-Befehle
-
 @bot.message_handler(commands=['loghistory'])
 def cmd_loghistory(message):
     if message.chat.id != ADMIN_ID:
         return
-    save_daily_snapshot()
+    write_history()
     bot.send_message(message.chat.id, "📊 History gespeichert.")
 
 @bot.message_handler(commands=['simulate'])
 def cmd_simulate(message):
     if message.chat.id != ADMIN_ID:
         return
-    results = run_simulation()
-    text = "🧪 Simulationsergebnisse:\n" + "\n".join(results)
-    bot.send_message(message.chat.id, text)
+    run_simulation()
+    bot.send_message(message.chat.id, "🧪 Simulation abgeschlossen. Ergebnisse in 'simulation_log.json'.")
 
 @bot.message_handler(commands=['recommend'])
 def cmd_recommend(message):
@@ -134,13 +120,15 @@ def cmd_recommend(message):
     text = "📌 Empfehlungen:\n" + "\n".join(recs)
     bot.send_message(message.chat.id, text)
 
-# Tägliches Logging um 00:01 Uhr
+# === Scheduler-Funktion im Hintergrund starten ===
 def run_scheduler():
     schedule.every().day.at("00:01").do(write_history)
     while True:
         schedule.run_pending()
         time.sleep(60)
 
-# Threads starten (damit alles wach bleibt)
-threading.Thread(target=run_flask).start()
-threading.Thread(target=run_scheduler).start()
+# === Flask & Scheduler starten ===
+if __name__ == '__main__':
+    threading.Thread(target=run_scheduler).start()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
