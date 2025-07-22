@@ -45,3 +45,15 @@ def get_profit_estimates():
             'percent': round((profit / buy_value) * 100, 2)
         })
     return result
+
+def simulate_trade(decision, balance, portfolio, prices):
+    for coin, action in decision.items():
+        price = prices[coin]
+        if action == "BUY" and balance > 10:
+            qty = round((balance * 0.3) / price, 4)
+            portfolio[coin] = portfolio.get(coin, 0) + qty
+            balance -= qty * price
+        elif action == "SELL" and coin in portfolio:
+            balance += portfolio[coin] * price
+            portfolio[coin] = 0
+    return {"balance": round(balance, 2), "portfolio": portfolio}
