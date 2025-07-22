@@ -54,3 +54,24 @@ def make_trade_decision():
         else:
             decision[p['coin']] = "BUY"
     return decision
+
+from sentiment_parser import get_sentiment_data
+
+def get_trading_decision():
+    sentiment_info = get_sentiment_data()
+    sentiment = sentiment_info['sentiment']
+    
+    decisions = []
+
+    if sentiment == "bullish":
+        decisions.append("📈 Marktstimmung bullish – mehr Risiko erlaubt.")
+    elif sentiment == "bearish":
+        decisions.append("📉 Marktstimmung bearish – defensiv agieren.")
+    else:
+        decisions.append("😐 Neutrale Stimmung – keine großen Bewegungen.")
+
+    # Hier kannst du deine Coins analysieren und weitere Entscheidungen treffen
+    # z. B. "Trade nur wenn Coin + Sentiment = bullish"
+
+    return decisions
+
