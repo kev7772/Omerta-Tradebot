@@ -37,3 +37,15 @@ for coin in simulated_coins:
     # Lernen auf Basis der simulierten Entscheidung
     learn_from_decision(coin, decision, actual_result)
 
+from autolearn import learn_from_decision
+
+def run_simulation():
+    # Test-Daten – später dynamisch aus Portfolio o. Kurslog generieren
+    simulated_data = [
+        {"coin": "BTC", "decision": "buy", "result": 12.3},
+        {"coin": "ETH", "decision": "sell", "result": -3.1},
+        {"coin": "DOGE", "decision": "hold", "result": 1.2},
+        {"coin": "SOL", "decision": "buy", "result": -8.5}]
+
+    for entry in simulated_data:
+        learn_from_decision(entry["coin"], entry["decision"], entry["result"])
