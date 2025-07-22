@@ -27,6 +27,7 @@ def evaluate_pending_learnings():
 
                 if change is not None:
                     learn_from_decision(coin, decision, change)
+                    print(f"📘 Gelernt: {coin} → {decision} → {round(change, 2)}%")
                 else:
                     new_logs.append(entry)  # Kein Vergleich möglich → nochmal versuchen
             else:
