@@ -2,6 +2,11 @@ import schedule
 import time
 from live_logger import write_history
 from datetime import datetime
+from learn_scheduler import evaluate_pending_learnings
+import schedule
+import time
+from live_logger import write_history
+from learn_scheduler import evaluate_pending_learnings  # falls aktiv
 
 def job():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -19,11 +24,6 @@ if __name__ == "__main__":
         schedule.run_pending()
         time.sleep(60)
 
-import schedule
-import time
-from live_logger import write_history
-from learn_scheduler import evaluate_pending_learnings  # falls aktiv
-
 def run_scheduler():
     schedule.every().day.at("00:01").do(write_history)
     schedule.every().day.at("00:10").do(evaluate_pending_learnings)
@@ -31,3 +31,7 @@ def run_scheduler():
     while True:
         schedule.run_pending()
         time.sleep(60)
+
+def run_scheduler():
+    schedule.every().day.at("00:01").do(write_history)
+    schedule.every().day.at("00:10").do(evaluate_pending_learnings)
