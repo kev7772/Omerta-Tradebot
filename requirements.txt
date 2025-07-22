@@ -3,4 +3,4 @@ python-dotenv
 requests
 python-binance
 pyTelegramBotAPI
-shedule
+schedule
