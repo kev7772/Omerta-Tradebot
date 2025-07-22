@@ -1,14 +1,10 @@
 import schedule
 import time
-from live_logger import write_history
 from datetime import datetime
-from learn_scheduler import evaluate_pending_learnings
-import schedule
-import time
 from live_logger import write_history
-from learn_scheduler import evaluate_pending_learnings  # falls aktiv
+from learn_scheduler import evaluate_pending_learnings
 
-def job():
+def job_write_history():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now}] ⏰ Kursdaten-Snapshot läuft...")
     try:
@@ -16,22 +12,22 @@ def job():
     except Exception as e:
         print(f"[{now}] ❌ Fehler beim Logging: {e}")
 
-schedule.every().day.at("10:00").do(job)
+def job_learn():
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{now}] 🧠 Bewertungsjob läuft...")
+    try:
+        evaluate_pending_learnings()
+    except Exception as e:
+        print(f"[{now}] ❌ Fehler beim Lernen: {e}")
 
-if __name__ == "__main__":
+def run_scheduler():
+    schedule.every().day.at("00:01").do(job_write_history)
+    schedule.every().day.at("00:10").do(job_learn)
+
     print("🔄 Scheduler läuft...")
     while True:
         schedule.run_pending()
         time.sleep(60)
 
-def run_scheduler():
-    schedule.every().day.at("00:01").do(write_history)
-    schedule.every().day.at("00:10").do(evaluate_pending_learnings)
-
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
-
-def run_scheduler():
-    schedule.every().day.at("00:01").do(write_history)
-    schedule.every().day.at("00:10").do(evaluate_pending_learnings)
+if __name__ == "__main__":
+    run_scheduler()
