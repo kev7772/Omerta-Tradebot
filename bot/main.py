@@ -177,6 +177,13 @@ def cmd_learninglog(message):
     text = "🧠 Lernstatistik:\n" + "\n".join(stats)
     bot.send_message(message.chat.id, text)
 
+@bot.message_handler(commands=['forcelearn'])
+def cmd_forcelearn(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    from autolearn import learn_from_decision
+    learn_from_decision("TEST", "buy", 10)
+    bot.send_message(message.chat.id, "✅ Lern-Eintrag für TEST erstellt.")
 # === Scheduler-Funktion im Hintergrund starten ===
 def run_scheduler():
     schedule.every().day.at("00:01").do(write_history)
