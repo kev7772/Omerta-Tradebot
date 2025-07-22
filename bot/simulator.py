@@ -43,4 +43,6 @@ def simulate_market(history):
 def run_simulation():
     history = load_history()
     if not history:
-        print("❌ Keine historischen Daten
+        print("❌ Keine historischen Daten gefunden. Bitte erst 'live_logger.py' ausführen.")
+        return
+    simulate_market(history)
