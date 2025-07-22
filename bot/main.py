@@ -167,6 +167,15 @@ def cmd_indicators(message):
 
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Fehler bei /indicators:\n{str(e)}")
+        
+@bot.message_handler(commands=['learninglog'])
+def cmd_learninglog(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    from analyze_learning import generate_learning_stats
+    stats = generate_learning_stats()
+    text = "🧠 Lernstatistik:\n" + "\n".join(stats)
+    bot.send_message(message.chat.id, text)
 
 # === Scheduler-Funktion im Hintergrund starten ===
 def run_scheduler():
