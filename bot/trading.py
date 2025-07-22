@@ -101,3 +101,11 @@ def get_profit_estimates():
         })
 
     return results
+
+def get_current_prices():
+    try:
+        prices = client.get_all_tickers()
+        return {p['symbol']: float(p.get('price', 0)) for p in prices}
+    except Exception as e:
+        print(f"Fehler beim Abrufen aktueller Preise: {e}")
+        return {}
