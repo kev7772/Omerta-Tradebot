@@ -105,7 +105,7 @@ def cmd_tradelogic(message):
 
 import schedule
 import time
-from history import save_daily_snapshot
+from live_logger import write_history
 from simulator import run_simulation
 from logic import recommend_trades
 
