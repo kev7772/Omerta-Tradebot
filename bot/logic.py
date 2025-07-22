@@ -8,6 +8,10 @@ def should_trigger_panic():
     return False, None
 
 def get_trading_decision():
+    """
+    Liefert eine erklärende Liste an: Was hätte ein erfahrener Trader wohl getan?
+    (Nur zur Anzeige im Bot)
+    """
     profits = get_profit_estimates()
     simulated_actions = []
     for p in profits:
@@ -20,13 +24,33 @@ def get_trading_decision():
     return simulated_actions
 
 def recommend_trades():
+    """
+    Liefert echte Empfehlungen basierend auf den Profiten
+    (z. B. bei /recommend Befehl)
+    """
     profits = get_profit_estimates()
     recommendations = []
     for p in profits:
         if p['percent'] > 10:
-            recommendations.append(f"{p['coin']}: 📈 Empfehlung zu verkaufen (über +10%)")
+            recommendations.append(f"{p['coin']}: 📈 Verkauf möglich (+{p['percent']}%)")
         elif p['percent'] < -15:
-            recommendations.append(f"{p['coin']}: 📉 Empfehlung defensiv zu halten oder vermeiden (unter -15%)")
+            recommendations.append(f"{p['coin']}: ⚠️ Beobachten / meiden ({p['percent']}%)")
         else:
-            recommendations.append(f"{p['coin']}: 🤝 Beobachten")
+            recommendations.append(f"{p['coin']}: 🤝 Halten ({p['percent']}%)")
     return recommendations
+
+def make_trade_decision():
+    """
+    Wird intern für echte Simulationen genutzt:
+    Liefert klares dict {coin: "BUY" | "SELL" | "HOLD"}
+    """
+    profits = get_profit_estimates()
+    decision = {}
+    for p in profits:
+        if p['percent'] > 20:
+            decision[p['coin']] = "SELL"
+        elif p['percent'] < -12:
+            decision[p['coin']] = "HOLD"
+        else:
+            decision[p['coin']] = "BUY"
+    return decision
