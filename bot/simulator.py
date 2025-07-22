@@ -28,3 +28,8 @@ def run_simulation():
         json.dump(log, f, indent=2)
 
     print("✅ Simulation abgeschlossen.")
+
+from autolearn import learn_from_decision
+
+# Beispiel:
+learn_from_decision("BTC", "buy", actual_percent=8.5)
