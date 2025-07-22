@@ -213,3 +213,76 @@ if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
+# === forecast.py ===
+from sentiment_parser import get_sentiment_data
+from trading import get_profit_estimates
+
+def forecast_market():
+    sentiment = get_sentiment_data()['sentiment']
+    profits = get_profit_estimates()
+
+    forecast = []
+    for p in profits:
+        coin = p['coin']
+        percent = p['percent']
+
+        if sentiment == "bullish" and percent > 5:
+            forecast.append(f"{coin}: 📈 Weiter steigend erwartet (+{percent}%)")
+        elif sentiment == "bearish" and percent < -5:
+            forecast.append(f"{coin}: 📉 Weitere Verluste wahrscheinlich ({percent}%)")
+        else:
+            forecast.append(f"{coin}: 🤔 Seitwärts / neutral ({percent}%)")
+
+    return forecast
+
+
+# === visualize_learning.py ===
+import json
+import matplotlib.pyplot as plt
+from collections import defaultdict
+
+def generate_heatmap():
+    with open("learn_log.json", "r") as f:
+        data = json.load(f)
+
+    stats = defaultdict(lambda: {"correct": 0, "wrong": 0})
+
+    for entry in data:
+        coin = entry['coin']
+        if entry['correct']:
+            stats[coin]['correct'] += 1
+        else:
+            stats[coin]['wrong'] += 1
+
+    coins = list(stats.keys())
+    values = [round(100 * stats[c]['correct'] / (stats[c]['correct'] + stats[c]['wrong']), 1) for c in coins]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(coins, values, color='green')
+    ax.set_ylabel('Erfolgsquote (%)')
+    ax.set_title('Lern-Heatmap je Coin')
+    ax.set_xticklabels(coins, rotation=45, ha='right')
+    plt.tight_layout()
+    plt.savefig("learn_heatmap.png")
+    return "learn_heatmap.png"
+
+
+# === Erweiterung für main.py ===
+@bot.message_handler(commands=['forecast'])
+def cmd_forecast(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    from forecast import forecast_market
+    lines = forecast_market()
+    bot.send_message(message.chat.id, "🔮 Marktprognose:
+" + "\n".join(lines))
+
+@bot.message_handler(commands=['heatmap'])
+def cmd_heatmap(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    from visualize_learning import generate_heatmap
+    path = generate_heatmap()
+    with open(path, "rb") as f:
+        bot.send_photo(message.chat.id, f, caption="Lern-Heatmap (Coin-Erfolgsquote)")
