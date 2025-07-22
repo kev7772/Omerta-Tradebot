@@ -1,68 +1,103 @@
 import os
+import json
+from datetime import datetime
 from binance.client import Client
 
-# API-Keys aus Environment (Railway Variables)
+# API-Keys aus Environment (Railway / Render Variablen)
 API_KEY = os.getenv("BINANCE_API_KEY")
 API_SECRET = os.getenv("BINANCE_API_SECRET")
 
 client = Client(API_KEY, API_SECRET)
 
+HISTORY_FILE = "history.json"
+
 def get_portfolio():
-    account = client.get_account()
-    prices = client.get_all_tickers()
+    try:
+        account = client.get_account()
+        prices = client.get_all_tickers()
+    except Exception as e:
+        print(f"Fehler beim Abrufen der Binance-Daten: {e}")
+        return []
 
     holdings = []
-    price_map = {p['symbol']: float(p['price']) for p in prices}
+    price_map = {p['symbol']: float(p.get('price', 0)) for p in prices}
 
     for asset in account['balances']:
-        free = float(asset['free'])
-        locked = float(asset['locked'])
-        total = free + locked
-        if total > 0 and asset['asset'] != 'USDT':
-            symbol = asset['asset'] + 'USDT'
-            current_price = price_map.get(symbol, 0)
-            if current_price == 0:
-                continue  # Überspringen, wenn kein Preis vorhanden
-            holdings.append({
-                'coin': asset['asset'],
-                'amount': total,
-                'price': current_price,
-                'value': round(current_price * total, 2)
-            })
+        try:
+            coin = asset.get('asset')
+            free = float(asset.get('free', 0))
+            locked = float(asset.get('locked', 0))
+            total = free + locked
+
+            if coin and total > 0 and coin != 'USDT':
+                symbol = coin + 'USDT'
+                current_price = price_map.get(symbol, 0)
+                holdings.append({
+                    'coin': coin,
+                    'amount': total,
+                    'price': current_price,
+                    'value': round(current_price * total, 2)
+                })
+        except Exception as e:
+            print(f"Fehler beim Verarbeiten von Asset {asset}: {e}")
+            continue
 
     return holdings
 
+def log_history():
+    holdings = get_portfolio()
+    log = {item['coin']: item['price'] for item in holdings}
+    now = datetime.utcnow().strftime("%Y-%m-%d")
+
+    try:
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, "r") as f:
+                data = json.load(f)
+        else:
+            data = {}
+
+        data[now] = log
+
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"[{now}] Historie erfolgreich gespeichert.")
+    except Exception as e:
+        print(f"Fehler beim Speichern der history.json: {e}")
+
 def get_profit_estimates():
-    data = get_portfolio()
-    result = []
-    for coin in data:
-        if coin['price'] == 0:
-            continue  # Überspringen, wenn kein Preis vorhanden
-        buy_price = coin['price'] * 0.85  # Simulierter Einstiegspreis
-        current_value = coin['price'] * coin['amount']
-        buy_value = buy_price * coin['amount']
-        if buy_value == 0:
-            continue  # Schutz gegen Division durch 0
-        profit = current_value - buy_value
-        result.append({
-            'coin': coin['coin'],
-            'profit': round(profit, 2),
-            'percent': round((profit / buy_value) * 100, 2)
+    try:
+        with open(HISTORY_FILE, "r") as f:
+            history = json.load(f)
+    except Exception as e:
+        print(f"Fehler beim Laden der history.json: {e}")
+        return []
+
+    if not history:
+        return []
+
+    # Letzter Tag
+    last_day = sorted(history.keys())[-1]
+    old_prices = history[last_day]
+
+    current = get_portfolio()
+    results = []
+
+    for coin in current:
+        symbol = coin['coin']
+        current_price = coin['price']
+        old_price = float(old_prices.get(symbol, 0))
+
+        if old_price > 0:
+            percent = ((current_price - old_price) / old_price) * 100
+        else:
+            percent = 0
+
+        results.append({
+            "coin": symbol,
+            "old": old_price,
+            "current": current_price,
+            "percent": round(percent, 2)
         })
-    return result
 
-def simulate_trade(decision, balance, portfolio, prices):
-    for coin, action in decision.items():
-        price = prices[coin]
-        if action == "BUY" and balance > 10:
-            qty = round((balance * 0.3) / price, 4)
-            portfolio[coin] = portfolio.get(coin, 0) + qty
-            balance -= qty * price
-        elif action == "SELL" and coin in portfolio:
-            balance += portfolio[coin] * price
-            portfolio[coin] = 0
-    return {"balance": round(balance, 2), "portfolio": portfolio}
-
-def get_current_prices():
-    # Beispiel mit festen Werten, später Binance-API
-    return {"BTC": 26450.4, "ETH": 1582.1}
+    return results
