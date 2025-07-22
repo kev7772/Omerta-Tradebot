@@ -151,6 +151,8 @@ def cmd_indicators(message):
     text += f"Bollinger%: {result['bb_percent']:.2f}"
     
     bot.send_message(message.chat.id, text)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Fehler bei /indicators: {e}")
 
 # === Scheduler-Funktion im Hintergrund starten ===
 def run_scheduler():
