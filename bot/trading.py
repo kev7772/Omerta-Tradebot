@@ -57,3 +57,7 @@ def simulate_trade(decision, balance, portfolio, prices):
             balance += portfolio[coin] * price
             portfolio[coin] = 0
     return {"balance": round(balance, 2), "portfolio": portfolio}
+
+def get_current_prices():
+    # Beispiel mit festen Werten, später Binance-API
+    return {"BTC": 26450.4, "ETH": 1582.1}
