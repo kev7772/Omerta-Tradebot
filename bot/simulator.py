@@ -4,10 +4,16 @@ import datetime
 from logic import make_trade_decision
 from trading import simulate_trade
 
+# Lädt die gespeicherten Kursdaten aus der history.json
 def load_history(file='history.json'):
-    with open(file, 'r') as f:
-        return json.load(f)
+    try:
+        with open(file, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("⚠️ Keine history.json gefunden.")
+        return []
 
+# Führt die Simulation für alle gespeicherten Tage durch
 def simulate_market(history):
     balance = 100.0  # Virtuelles Startkapital in €
     portfolio = {}
@@ -33,6 +39,8 @@ def simulate_market(history):
 
     print("✅ Simulation abgeschlossen. Ergebnisse in 'simulation_log.json'.")
 
-if __name__ == "__main__":
-    data = load_history()
-    simulate_market(data)
+# Diese Funktion kann aus main.py oder Telegram-Befehl aufgerufen werden
+def run_simulation():
+    history = load_history()
+    if not history:
+        print("❌ Keine historischen Daten
