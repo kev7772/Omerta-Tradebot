@@ -136,7 +136,7 @@ def cmd_recommend(message):
 
 # Tägliches Logging um 00:01 Uhr
 def run_scheduler():
-    schedule.every().day.at("00:01").do(save_daily_snapshot)
+    schedule.every().day.at("00:01").do(write_history)
     while True:
         schedule.run_pending()
         time.sleep(60)
