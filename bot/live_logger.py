@@ -1,32 +1,33 @@
-# live_logger.py
+from trading import get_current_prices
 import json
 from datetime import datetime
-from trading import get_current_prices  # muss existieren
+import os
 
-def write_history(filename="history.json"):
+HISTORY_FILE = "history.json"
+
+def write_history():
+    prices = get_current_prices()
+    if not prices:
+        print("⚠️ Keine aktuellen Preise gefunden.")
+        return
+
+    now = datetime.utcnow().strftime("%Y-%m-%d")
+
     try:
-        prices = get_current_prices()  # z.B. {'BTC': 26100.5, 'ETH': 1580.2}
-        date_str = datetime.now().strftime("%Y-%m-%d")
-
-        new_entry = {
-            "date": date_str,
-            "prices": prices
-        }
-
-        try:
-            with open(filename, "r") as f:
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, "r") as f:
                 data = json.load(f)
-        except FileNotFoundError:
-            data = []
+        else:
+            data = {}
 
-        data.append(new_entry)
+        # Speichere nur relevante USDT-Paare
+        filtered = {symbol: price for symbol, price in prices.items() if symbol.endswith("USDT")}
 
-        with open(filename, "w") as f:
-            json.dump(data, f, indent=4)
+        data[now] = filtered
 
-        print(f"✅ Kursdaten für {date_str} gespeichert.")
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"✅ [{now}] Live-Preise gespeichert ({len(filtered)} Einträge)")
     except Exception as e:
-        print(f"❌ Fehler beim Schreiben der History: {e}")
-
-if __name__ == "__main__":
-    write_history()
+        print(f"Fehler beim Speichern der Preise: {e}")
