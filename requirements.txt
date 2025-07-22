@@ -6,3 +6,6 @@ pyTelegramBotAPI
 schedule
 ta
 pandas
+matplotlib
+fpdf
+openpyxl
