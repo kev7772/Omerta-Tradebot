@@ -18,3 +18,16 @@ if __name__ == "__main__":
     while True:
         schedule.run_pending()
         time.sleep(60)
+
+import schedule
+import time
+from live_logger import write_history
+from learn_scheduler import evaluate_pending_learnings  # falls aktiv
+
+def run_scheduler():
+    schedule.every().day.at("00:01").do(write_history)
+    schedule.every().day.at("00:10").do(evaluate_pending_learnings)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
