@@ -29,7 +29,11 @@ def run_simulation():
 
     print("✅ Simulation abgeschlossen.")
 
-from autolearn import learn_from_decision
+# Beispiel-Simulation (vereinfacht)
+for coin in simulated_coins:
+    decision = "buy"  # oder aus Logik berechnet
+    actual_result = 8.5  # Ergebnis der Simulation
 
-# Beispiel:
-learn_from_decision("BTC", "buy", actual_percent=8.5)
+    # Lernen auf Basis der simulierten Entscheidung
+    learn_from_decision(coin, decision, actual_result)
+
