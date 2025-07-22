@@ -9,6 +9,8 @@ from simulator import run_simulation
 from logic import recommend_trades
 from trading import get_portfolio, get_profit_estimates
 from logic import should_trigger_panic, get_trading_decision
+from sentiment_parser import get_sentiment_data
+from indicators import calculate_indicators
 
 # === Bot & Server Setup ===
 BOT_TOKEN = "7622848441:AAGiKi2Kpe4K-qUvmDzoj1ECgYYmsvjOmyA"
@@ -118,6 +120,36 @@ def cmd_recommend(message):
         return
     recs = recommend_trades()
     text = "📌 Empfehlungen:\n" + "\n".join(recs)
+    bot.send_message(message.chat.id, text)@bot.message_handler(commands=['sentiment'])
+    
+@bot.message_handler(commands=['sentiment'])
+def cmd_sentiment(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    data = get_sentiment_data()
+    text = f"📊 Marktstimmung: {data['sentiment'].upper()}\n"
+    text += f"🔥 Stimmungsscore: {data['score']}\n\n"
+    text += "📡 Quellen:\n" + "\n".join([f"- {s}" for s in data["sources"]])
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(commands=['indicators'])
+def cmd_indicators(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    klines = client.get_klines(symbol='BTCUSDT', interval='1h', limit=100)
+    df = pd.DataFrame(klines, columns=[
+        "timestamp", "open", "high", "low", "close", "volume",
+        "close_time", "quote_asset_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
+    ])
+    df = df.astype(float)
+
+    result = calculate_indicators(df)
+    text = f"🧠 Technische Analyse BTCUSDT\n"
+    text += f"RSI: {result['rsi']:.2f}\n"
+    text += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}\n"
+    text += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}\n"
+    text += f"Bollinger%: {result['bb_percent']:.2f}"
+    
     bot.send_message(message.chat.id, text)
 
 # === Scheduler-Funktion im Hintergrund starten ===
