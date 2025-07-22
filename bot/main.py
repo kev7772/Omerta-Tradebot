@@ -11,6 +11,7 @@ from trading import get_portfolio, get_profit_estimates
 from logic import should_trigger_panic, get_trading_decision
 from sentiment_parser import get_sentiment_data
 from indicators import calculate_indicators
+from binance.client import Client
 
 # === Bot & Server Setup ===
 BOT_TOKEN = "7622848441:AAGiKi2Kpe4K-qUvmDzoj1ECgYYmsvjOmyA"
