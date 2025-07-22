@@ -185,3 +185,8 @@ if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
+# history.json anlegen, falls nicht vorhanden
+if not os.path.exists("history.json"):
+    with open("history.json", "w") as f:
+        json.dump({}, f)
