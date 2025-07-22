@@ -1,5 +1,7 @@
 from trading import get_profit_estimates
+from sentiment_parser import fetch_mock_sentiment, interpret_sentiment
 
+# === 1. Notbremse (für /panic)
 def should_trigger_panic():
     profits = get_profit_estimates()
     for p in profits:
@@ -7,6 +9,7 @@ def should_trigger_panic():
             return True, p['coin']
     return False, None
 
+# === 2. Handelslogik-Auswertung (für /tradelogic)
 def get_trading_decision():
     profits = get_profit_estimates()
     simulated_actions = []
@@ -19,6 +22,7 @@ def get_trading_decision():
             simulated_actions.append(f"{p['coin']}: 🤔 Hätte gehalten")
     return simulated_actions
 
+# === 3. Empfehlungen (für /recommend)
 def recommend_trades():
     profits = get_profit_estimates()
     recommendations = []
@@ -31,17 +35,15 @@ def recommend_trades():
             recommendations.append(f"{p['coin']}: ⏳ abwarten")
     return recommendations
 
-# logic.py (Erweiterung)
-from sentiment_parser import fetch_mock_sentiment, interpret_sentiment
-
+# === 4. Entscheidungslogik für Simulator
 def make_trade_decision(prices, date=None, mode="live"):
     decisions = {}
 
     for coin, price in prices.items():
-        trend = price / 10000  # Dummylogik (wird noch erweitert)
-        sentiment = interpret_sentiment(fetch_mock_sentiment())
+        trend = price / 10000  # Dummy-Trendanalyse (vereinfachter Score)
+        sentiment = interpret_sentiment(fetch_mock_sentiment())  # Simuliertes Sentiment
 
-        score = trend + sentiment  # Kombiniert technisches & soziales Signal
+        score = trend + sentiment
 
         if score > 1.5:
             decisions[coin] = "BUY"
