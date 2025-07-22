@@ -184,6 +184,23 @@ def cmd_forcelearn(message):
     from autolearn import learn_from_decision
     learn_from_decision("TEST", "buy", 10)
     bot.send_message(message.chat.id, "✅ Lern-Eintrag für TEST erstellt.")
+
+@bot.message_handler(commands=['change'])
+def cmd_change(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    try:
+        parts = message.text.split()
+        if len(parts) < 2:
+            bot.send_message(message.chat.id, "⚠️ Bitte gib ein Datum an: /change 2025-07-19")
+            return
+        date = parts[1]
+        from history_tools import get_all_changes_since
+        changes = get_all_changes_since(date)
+        bot.send_message(message.chat.id, "📊 Kursveränderungen seit " + date + ":\n" + "\n".join(changes))
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Fehler bei /change:\n{str(e)}")
+
 # === Scheduler-Funktion im Hintergrund starten ===
 def run_scheduler():
     schedule.every().day.at("00:01").do(write_history)
