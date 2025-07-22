@@ -2,16 +2,15 @@ import os
 import threading
 import telebot
 from flask import Flask, request
-import schedule
 import time
 from live_logger import write_history
 from simulator import run_simulation
-from logic import recommend_trades
-from trading import get_portfolio, get_profit_estimates
-from logic import should_trigger_panic, get_trading_decision
+from logic import recommend_trades, should_trigger_panic, get_trading_decision
 from sentiment_parser import get_sentiment_data
 from indicators import calculate_indicators
 from binance.client import Client
+from trading import get_portfolio, get_profit_estimates
+from scheduler import run_scheduler
 
 # === Bot & Server Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -121,8 +120,8 @@ def cmd_recommend(message):
         return
     recs = recommend_trades()
     text = "📌 Empfehlungen:\n" + "\n".join(recs)
-    bot.send_message(message.chat.id, text)@bot.message_handler(commands=['sentiment'])
-    
+    bot.send_message(message.chat.id, text)
+
 @bot.message_handler(commands=['sentiment'])
 def cmd_sentiment(message):
     if message.chat.id != ADMIN_ID:
@@ -138,23 +137,18 @@ def cmd_indicators(message):
     if message.chat.id != ADMIN_ID:
         return
     try:
-        from binance.client import Client
-
         API_KEY = os.getenv("BINANCE_API_KEY")
         API_SECRET = os.getenv("BINANCE_API_SECRET")
-
-        # Client wird direkt hier erzeugt – sicher & unabhängig
         client = Client(API_KEY, API_SECRET)
 
         klines = client.get_klines(symbol='BTCUSDT', interval='1h', limit=100)
-        import pandas as pd  # nur falls oben nicht schon drin
+        import pandas as pd
         df = pd.DataFrame(klines, columns=[
             "timestamp", "open", "high", "low", "close", "volume",
             "close_time", "quote_asset_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
         ])
         df = df.astype(float)
 
-        from indicators import calculate_indicators  # import hier reinziehen, falls nötig
         result = calculate_indicators(df)
 
         text = f"🧠 Technische Analyse BTCUSDT\n"
@@ -167,116 +161,14 @@ def cmd_indicators(message):
 
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Fehler bei /indicators:\n{str(e)}")
-        
-@bot.message_handler(commands=['learninglog'])
-def cmd_learninglog(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    from analyze_learning import generate_learning_stats
-    stats = generate_learning_stats()
-    text = "🧠 Lernstatistik:\n" + "\n".join(stats)
-    bot.send_message(message.chat.id, text)
 
-@bot.message_handler(commands=['forcelearn'])
-def cmd_forcelearn(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    from autolearn import learn_from_decision
-    learn_from_decision("TEST", "buy", 10)
-    bot.send_message(message.chat.id, "✅ Lern-Eintrag für TEST erstellt.")
-
-@bot.message_handler(commands=['change'])
-def cmd_change(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    try:
-        parts = message.text.split()
-        if len(parts) < 2:
-            bot.send_message(message.chat.id, "⚠️ Bitte gib ein Datum an: /change 2025-07-19")
-            return
-        date = parts[1]
-        from history_tools import get_all_changes_since
-        changes = get_all_changes_since(date)
-        bot.send_message(message.chat.id, "📊 Kursveränderungen seit " + date + ":\n" + "\n".join(changes))
-    except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Fehler bei /change:\n{str(e)}")
-
-# === Scheduler-Funktion im Hintergrund starten ===
-def run_scheduler():
-    schedule.every().day.at("00:01").do(write_history)
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
-
-# === Flask & Scheduler starten ===
-if __name__ == '__main__':
-    threading.Thread(target=run_scheduler).start()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-
-# === forecast.py ===
-from sentiment_parser import get_sentiment_data
-from trading import get_profit_estimates
-
-def forecast_market():
-    sentiment = get_sentiment_data()['sentiment']
-    profits = get_profit_estimates()
-
-    forecast = []
-    for p in profits:
-        coin = p['coin']
-        percent = p['percent']
-
-        if sentiment == "bullish" and percent > 5:
-            forecast.append(f"{coin}: 📈 Weiter steigend erwartet (+{percent}%)")
-        elif sentiment == "bearish" and percent < -5:
-            forecast.append(f"{coin}: 📉 Weitere Verluste wahrscheinlich ({percent}%)")
-        else:
-            forecast.append(f"{coin}: 🤔 Seitwärts / neutral ({percent}%)")
-
-    return forecast
-
-
-# === visualize_learning.py ===
-import json
-import matplotlib.pyplot as plt
-from collections import defaultdict
-
-def generate_heatmap():
-    with open("learn_log.json", "r") as f:
-        data = json.load(f)
-
-    stats = defaultdict(lambda: {"correct": 0, "wrong": 0})
-
-    for entry in data:
-        coin = entry['coin']
-        if entry['correct']:
-            stats[coin]['correct'] += 1
-        else:
-            stats[coin]['wrong'] += 1
-
-    coins = list(stats.keys())
-    values = [round(100 * stats[c]['correct'] / (stats[c]['correct'] + stats[c]['wrong']), 1) for c in coins]
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(coins, values, color='green')
-    ax.set_ylabel('Erfolgsquote (%)')
-    ax.set_title('Lern-Heatmap je Coin')
-    ax.set_xticklabels(coins, rotation=45, ha='right')
-    plt.tight_layout()
-    plt.savefig("learn_heatmap.png")
-    return "learn_heatmap.png"
-
-
-# === Erweiterung für main.py ===
 @bot.message_handler(commands=['forecast'])
 def cmd_forecast(message):
     if message.chat.id != ADMIN_ID:
         return
     from forecast import forecast_market
     lines = forecast_market()
-    bot.send_message(message.chat.id, "🔮 Marktprognose:
-" + "\n".join(lines))
+    bot.send_message(message.chat.id, "🔮 Marktprognose:\n" + "\n".join(lines))
 
 @bot.message_handler(commands=['heatmap'])
 def cmd_heatmap(message):
@@ -286,3 +178,9 @@ def cmd_heatmap(message):
     path = generate_heatmap()
     with open(path, "rb") as f:
         bot.send_photo(message.chat.id, f, caption="Lern-Heatmap (Coin-Erfolgsquote)")
+
+# === Flask & Scheduler starten ===
+if __name__ == '__main__':
+    threading.Thread(target=run_scheduler).start()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
