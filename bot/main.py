@@ -204,6 +204,13 @@ def handle_learninglog(message):
     log = get_learning_log()
     print("📤 Antwort an Telegram:", log)
     bot.reply_to(message, log)
+
+from simulator import run_simulation  # Importieren
+
+@bot.message_handler(commands=['simulate'])
+def handle_simulate(message):
+    result_text = run_simulation()
+    bot.reply_to(message, result_text)
     
 # === Flask & Scheduler starten ===
 if __name__ == '__main__':
