@@ -2,7 +2,6 @@ import os
 import json
 from datetime import datetime
 from binance.client import Client
-from simulator import run_simulation
 
 # === API-Setup ===
 API_KEY = os.getenv("BINANCE_API_KEY")
@@ -143,6 +142,8 @@ def simulate_trade(decision, balance, portfolio, prices):
     return 
     {"balance": round(balance, 2),
         "portfolio": portfolio}
+
+from simulator import run_simulation
 
 # Beispiel in main.py oder trading.py
 run_simulation()  # beim Start oder via Timer/Trigger
