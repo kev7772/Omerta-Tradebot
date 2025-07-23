@@ -120,18 +120,24 @@ import json
 import os
 
 def get_learning_log():
-    filepath = "learning_log.json"  # Pfad ggf. anpassen
+    filepath = os.path.join(os.path.dirname(__file__), "learning_log.json")
 
+    print("🔎 Absoluter Pfad zur Datei:", filepath)
     if not os.path.exists(filepath):
+        print("❌ Datei nicht gefunden!")
         return "❌ Noch kein Lernverlauf vorhanden (Datei fehlt)."
 
-    with open(filepath, "r") as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            return "⚠️ Lernlog-Datei beschädigt oder leer."
+    try:
+        with open(filepath, "r") as f:
+            content = f.read()
+            print("📄 Inhalt der Datei:", content)
+            data = json.loads(content)
+    except json.JSONDecodeError:
+        print("⚠️ JSON-Fehler!")
+        return "⚠️ Lernlog-Datei beschädigt oder leer."
 
     if not data:
+        print("ℹ️ Datei ist leer.")
         return "📘 Lernlog ist leer."
 
     output = "📘 Lernverlauf (letzte 5 Einträge):\n"
@@ -140,4 +146,6 @@ def get_learning_log():
         coin = eintrag.get("coin", "???")
         erfolg = eintrag.get("success", "?")
         output += f"📅 {datum} | {coin} | Erfolg: {erfolg}%\n"
+
+    print("✅ Ausgabe an Telegram:", output)
     return output
