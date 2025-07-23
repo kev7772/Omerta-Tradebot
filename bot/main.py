@@ -191,6 +191,18 @@ def send_simulation_log(message):
     except:
         bot.reply_to(message, "Keine Simulationen gefunden.")
 
+import os
+import telebot
+from logic import get_learning_log
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(BOT_TOKEN)
+
+@bot.message_handler(commands=['learninglog'])
+def handle_learninglog(message):
+    log = get_learning_log()
+    bot.reply_to(message, log)
+    
 # === Flask & Scheduler starten ===
 if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
