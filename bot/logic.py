@@ -115,3 +115,23 @@ def make_trade_decision():
                 decisions[coin] = "BUY"
 
     return decisions
+
+import json
+
+def get_learning_log():
+    try:
+        with open("learning_log.json", "r") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return "❌ Noch kein Lernverlauf vorhanden."
+
+    if not data:
+        return "📘 Lernlog ist leer."
+
+    output = "📘 Lernverlauf (letzte 5 Einträge):\n"
+    for eintrag in data[-5:]:
+        datum = eintrag.get("date", "???")
+        coin = eintrag.get("coin", "???")
+        erfolg = eintrag.get("success", "?")
+        output += f"📅 {datum} | {coin} | Erfolg: {erfolg}%\n"
+    return output
