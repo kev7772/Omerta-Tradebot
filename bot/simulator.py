@@ -57,6 +57,9 @@ def run_simulation():
         # Zukünftige Bewertung vormerken
         log_future_evaluation(coin, decision)
 
-def log_result(entry):
-    with open("log.json", "a") as f:
-        f.write(json.dumps(entry) + "\n")
+def save_simulation_log(entry):
+    try:
+        with open("learninglog.json", "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        print(f"Fehler beim Loggen der Simulation: {e}")
