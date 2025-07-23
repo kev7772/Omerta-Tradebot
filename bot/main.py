@@ -212,12 +212,12 @@ def handle_simulate(message):
     result_text = run_simulation()
     bot.reply_to(message, result_text)
 
-from simulator import run_live_simulation
+from simulator import run_simulation
 
-@bot.message_handler(commands=['livesimulate'])
-def handle_livesim(message):
-    response = run_live_simulation()
-    bot.reply_to(message, response)
+@bot.message_handler(commands=['simulate'])
+def handle_simulate(message):
+    result = run_simulation()
+    bot.reply_to(message, result)
     
 # === Flask & Scheduler starten ===
 if __name__ == '__main__':
