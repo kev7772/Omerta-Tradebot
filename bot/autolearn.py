@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 
-LEARN_LOG = "learn_log.json"
+LEARN_LOG = "learning_log.json"
 
 def learn_from_decision(coin, decision, actual_percent):
     """
@@ -27,15 +27,15 @@ def learn_from_decision(coin, decision, actual_percent):
         "timestamp": datetime.now().isoformat()
     }
 
-    if os.path.exists(LEARN_LOG):
-        with open(LEARN_LOG, "r") as f:
+    if os.path.exists(LEARNING_LOG):
+        with open(LEARNING_LOG, "r") as f:
             data = json.load(f)
     else:
         data = []
 
     data.append(result)
 
-    with open(LEARN_LOG, "w") as f:
+    with open(LEARNING_LOG, "w") as f:
         json.dump(data, f, indent=2)
 
     return correct
