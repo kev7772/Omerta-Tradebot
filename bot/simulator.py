@@ -56,3 +56,7 @@ def run_simulation():
 
         # Zukünftige Bewertung vormerken
         log_future_evaluation(coin, decision)
+
+def log_result(entry):
+    with open("log.json", "a") as f:
+        f.write(json.dumps(entry) + "\n")
