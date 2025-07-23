@@ -117,13 +117,19 @@ def make_trade_decision():
     return decisions
 
 import json
+import os
 
 def get_learning_log():
-    try:
-        with open("learning_log.json", "r") as f:
+    filepath = "learning_log.json"  # Pfad ggf. anpassen
+
+    if not os.path.exists(filepath):
+        return "❌ Noch kein Lernverlauf vorhanden (Datei fehlt)."
+
+    with open(filepath, "r") as f:
+        try:
             data = json.load(f)
-    except FileNotFoundError:
-        return "❌ Noch kein Lernverlauf vorhanden."
+        except json.JSONDecodeError:
+            return "⚠️ Lernlog-Datei beschädigt oder leer."
 
     if not data:
         return "📘 Lernlog ist leer."
