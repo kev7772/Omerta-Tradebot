@@ -181,6 +181,16 @@ def cmd_heatmap(message):
     with open(path, "rb") as f:
         bot.send_photo(message.chat.id, f, caption="Lern-Heatmap (Coin-Erfolgsquote)")
 
+@bot.message_handler(commands=['simlog'])
+def send_simulation_log(message):
+    try:
+        with open("learninglog.json", "r") as f:
+            logs = f.readlines()[-5:]  # letzte 5 Logs
+        response = "\n".join([json.loads(l).get("szenario", "") + " – " + json.loads(l).get("aktion", "") for l in logs])
+        bot.reply_to(message, f"Letzte Simulationen:\n{response}")
+    except:
+        bot.reply_to(message, "Keine Simulationen gefunden.")
+
 # === Flask & Scheduler starten ===
 if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
