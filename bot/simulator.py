@@ -1,26 +1,62 @@
 import json
+import random
 from datetime import datetime
+from binance.client import Client
+import os
 
-def run_simulation():
-    print("🔁 Simulation gestartet...")
+# Binance API laden
+API_KEY = os.getenv("BINANCE_API_KEY")
+API_SECRET = os.getenv("BINANCE_API_SECRET")
+client = Client(API_KEY, API_SECRET)
 
-    # Beispiel-Szenario: FTX-Crash
-    scenario = {
+
+# ========== HISTORISCHE SZENARIEN ==========
+
+historical_scenarios = [
+    {
         "name": "FTX Collapse",
         "date": "2022-11-09",
         "coin": "FTT",
         "price_before": 22.00,
         "price_after": 1.50,
         "volume_crash": True,
+    },
+    {
+        "name": "Terra Luna Crash",
+        "date": "2022-05-10",
+        "coin": "LUNA",
+        "price_before": 85.00,
+        "price_after": 0.0001,
+        "volume_crash": True,
+    },
+    {
+        "name": "Elon Doge Pump",
+        "date": "2021-04-15",
+        "coin": "DOGE",
+        "price_before": 0.08,
+        "price_after": 0.32,
+        "volume_crash": False,
+    },
+    {
+        "name": "Corona Market Crash",
+        "date": "2020-03-12",
+        "coin": "BTC",
+        "price_before": 9200,
+        "price_after": 4800,
+        "volume_crash": True,
     }
+]
 
-    # Simulierte Entscheidung des Bots
+
+def run_simulation():
+    print("🔁 Starte historische Simulation...")
+
+    scenario = random.choice(historical_scenarios)
+
     decision = get_decision_based_on_scenario(scenario)
 
-    # Prozentuale Preisänderung berechnen
     percent_change = ((scenario["price_after"] - scenario["price_before"]) / scenario["price_before"]) * 100
 
-    # Zusammenfassung der Simulation
     log_entry = {
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "szenario": scenario["name"],
@@ -33,11 +69,9 @@ def run_simulation():
         "success": round(abs(percent_change), 2) if decision in ["verkauft", "gekauft"] else 0.0
     }
 
-    # In learning_log.json speichern
     save_simulation_log(log_entry)
 
-    # Rückgabe für Telegram
-    result_text = (
+    return (
         f"📊 *Simulation abgeschlossen:*\n"
         f"🧠 Szenario: {log_entry['szenario']}\n"
         f"💰 Coin: {log_entry['coin']}\n"
@@ -48,9 +82,43 @@ def run_simulation():
         f"🧠 Verhalten: {log_entry['verhalten']}"
     )
 
-    print(result_text)
-    return result_text
 
+# ========== LIVE-SIMULATION ==========
+
+def run_live_simulation():
+    print("🔄 Starte Live-Simulation mit echten Kursdaten...")
+
+    try:
+        prices = client.get_all_tickers()
+    except Exception as e:
+        return f"❌ Fehler beim Abrufen der Live-Daten: {e}"
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    selected_coins = ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "LTCUSDT"]
+
+    log_entries = []
+
+    for p in prices:
+        if p["symbol"] in selected_coins:
+            price = float(p["price"])
+            coin = p["symbol"].replace("USDT", "")
+            decision = simulate_live_decision(coin, price)
+
+            log_entries.append({
+                "date": timestamp,
+                "coin": coin,
+                "preis_live": price,
+                "entscheidung": decision,
+                "verhalten": "Live-Modus",
+                "success": random.uniform(5, 25) if decision == "gekauft" else random.uniform(-15, 10)
+            })
+
+    save_simulation_log(log_entries, batch=True)
+
+    return f"✅ Live-Simulation abgeschlossen mit {len(log_entries)} Coins."
+
+
+# ========== LOGIK & SPEICHERN ==========
 
 def get_decision_based_on_scenario(scenario):
     if scenario["volume_crash"] or scenario["price_after"] < (0.3 * scenario["price_before"]):
@@ -60,6 +128,13 @@ def get_decision_based_on_scenario(scenario):
     else:
         return "gehalten"
 
+def simulate_live_decision(coin, price):
+    if "DOGE" in coin or price < 0.5:
+        return "gekauft"
+    elif price > 1000:
+        return "gehalten"
+    else:
+        return "verkauft"
 
 def evaluate_decision(decision, percent_change):
     if decision == "verkauft" and percent_change < -50:
@@ -71,24 +146,23 @@ def evaluate_decision(decision, percent_change):
     else:
         return "Neutral / kein klarer Vorteil"
 
-
-def save_simulation_log(entry):
+def save_simulation_log(entries, batch=False):
     filepath = "learning_log.json"
 
     try:
-        # Vorherige Einträge laden
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             data = []
 
-        # Neuen Eintrag anhängen
-        data.append(entry)
+        if batch:
+            data.extend(entries)
+        else:
+            data.append(entries)
 
-        # Zurückspeichern
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
 
     except Exception as e:
-        print(f"❌ Fehler beim Schreiben in learning_log.json: {e}")
+        print(f"❌ Fehler beim Schreiben: {e}")
