@@ -12,6 +12,7 @@ from indicators import calculate_indicators
 from binance.client import Client
 from trading import get_portfolio, get_profit_estimates
 from scheduler import run_scheduler
+from simulator import run_simulation
 
 # === Bot & Server Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -190,3 +191,6 @@ if __name__ == '__main__':
 if not os.path.exists("history.json"):
     with open("history.json", "w") as f:
         json.dump({}, f)
+
+# Direkt beim Start:
+run_simulation()
