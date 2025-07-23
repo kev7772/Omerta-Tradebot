@@ -32,7 +32,7 @@ def log_future_evaluation(coin, decision):
         json.dump(logs, f, indent=2)
 
 def run_simulation():
-    portfolio = get_portfolio()
+    portfolio = trading.get_portfolio()
     decisions = get_trading_decision()  # z. B. ['BTC: 🔼 Hätte verkauft', 'ETH: 🤔 Hätte gehalten']
 
     for entry in decisions:
