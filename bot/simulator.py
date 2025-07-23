@@ -1,5 +1,5 @@
 from autolearn import learn_from_decision
-from trading import get_portfolio
+import trading
 from logic import get_trading_decision
 from datetime import datetime
 import random
