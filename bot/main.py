@@ -200,7 +200,9 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['learninglog'])
 def handle_learninglog(message):
+    print("📥 /learninglog empfangen")
     log = get_learning_log()
+    print("📤 Antwort an Telegram:", log)
     bot.reply_to(message, log)
     
 # === Flask & Scheduler starten ===
