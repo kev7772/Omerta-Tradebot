@@ -19,7 +19,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
-
+top
 # === Flask Endpunkte ===
 @app.route('/')
 def index():
@@ -37,10 +37,8 @@ def webhook():
 # === Telegram-Befehle ===
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    if message.chat.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "Zugriff verweigert.")
-        return
-    bot.send_message(message.chat.id, "Willkommen beim OmertaTradeBot 🤖")
+    print(f"🧪 Chat-ID empfangen: {message.chat.id}")  # DEBUG
+    bot.send_message(message.chat.id, f"Deine Chat-ID ist: {message.chat.id}")
 
 @bot.message_handler(commands=['status'])
 def cmd_status(message):
