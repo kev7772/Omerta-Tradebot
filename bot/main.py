@@ -223,6 +223,6 @@ if not os.path.exists("history.json"):
         json.dump({}, f)
 
 run_simulation()
-decisions = get_trade_decisions()
+decisions = make_trade_decisions()
 log_trade_decisions(decisions)
 run_feedback_loop()
