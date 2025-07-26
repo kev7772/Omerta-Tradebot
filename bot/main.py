@@ -227,6 +227,5 @@ def startup_tasks():
 # === Bot starten ===
 if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
-    threading.Thread(target=startup_tasks).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
