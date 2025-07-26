@@ -5,7 +5,7 @@ import telebot
 from flask import Flask, request
 from live_logger import write_history
 from simulator import run_simulation, run_live_simulation
-from logic import recommend_trades, should_trigger_panic, get_trading_decision, get_learning_log, get_trade_decisions
+from logic import recommend_trades, should_trigger_panic, make_trading_decision, get_learning_log, get_trade_decisions
 from sentiment_parser import get_sentiment_data
 from indicators import calculate_indicators
 from binance.client import Client
