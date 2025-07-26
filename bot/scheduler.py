@@ -4,7 +4,7 @@ from datetime import datetime
 from live_logger import write_history
 from learn_scheduler import evaluate_pending_learnings
 from simulator import run_simulation
-from telegram import Bot
+from telebot import TeleBot  # ✅ passend zu deinem Bot-System
 import os
 
 # Telegram Setup
