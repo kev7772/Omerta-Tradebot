@@ -50,7 +50,7 @@ def webhook():
 # === Telegram Commands ===
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    bot.send_message(message.chat.id, "ð Willkommen beim OmertaTradeBot!
+    bot.send_message(message.chat.id, "👋 Willkommen beim OmertaTradeBot!")
 Nutze z.â¯B. /status oder /simulate.")
 
 @bot.message_handler(commands=['status'])
