@@ -243,3 +243,6 @@ from decision_logger import log_trade_decisions
 
 decisions = get_trade_decisions()
 log_trade_decisions(decisions)
+
+from feedback_loop import run_feedback_loop
+run_feedback_loop()
