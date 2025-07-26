@@ -31,3 +31,14 @@ def run_scheduler():
 
 if __name__ == "__main__":
     run_scheduler()
+    schedule.every(3).hours.do(job_simulation)
+
+from simulator import run_simulation
+
+def job_simulation():
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{now}] 🧪 Simulation läuft...")
+    try:
+        run_simulation()
+    except Exception as e:
+        print(f"[{now}] ❌ Fehler bei Simulation: {e}")
