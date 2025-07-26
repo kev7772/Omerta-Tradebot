@@ -1,35 +1,39 @@
 import schedule
 import time
-from datetime import datetime
-from live_logger import write_history
-from learn_scheduler import evaluate_pending_learnings
+import os
+from trading import get_portfolio, get_profit_estimates
+from sentiment_parser import get_sentiment_data
+from telebot import TeleBot
 
-def job_write_history():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now}] ⏰ Kursdaten-Snapshot läuft...")
-    try:
-        write_history()
-    except Exception as e:
-        print(f"[{now}] ❌ Fehler beim Logging: {e}")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+bot = TeleBot(BOT_TOKEN)
 
-def job_learn():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now}] 🧠 Bewertungsjob läuft...")
-    try:
-        evaluate_pending_learnings()
-    except Exception as e:
-        print(f"[{now}] ❌ Fehler beim Lernen: {e}")
+def send_autostatus():
+    # Portfolio
+    portfolio = get_portfolio()
+    portfolio_msg = "📊 Autostatus – Portfolio:\n"
+    for h in portfolio:
+        portfolio_msg += f"{h['coin']}: {h['amount']} → {h['value']} €\n"
+    bot.send_message(ADMIN_ID, portfolio_msg)
+
+    # Gewinne
+    profits = get_profit_estimates()
+    profit_msg = "💰 Buchgewinne:\n"
+    for p in profits:
+        profit_msg += f"{p['coin']}: {p['profit']} € ({p['percent']}%)\n"
+    bot.send_message(ADMIN_ID, profit_msg)
+
+    # Stimmung
+    sentiment = get_sentiment_data()
+    sent_msg = f"📡 Marktstimmung: {sentiment['sentiment'].upper()} ({sentiment['score']})\n"
+    sent_msg += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sentiment['sources']])
+    bot.send_message(ADMIN_ID, sent_msg)
 
 def run_scheduler():
-    # Jeden Tag um 00:01 History loggen
-    schedule.every().day.at("00:01").do(job_write_history)
-    # Jeden Tag um 00:10 automatisch lernen
-    schedule.every().day.at("00:10").do(job_learn)
+    print("⏰ Scheduler läuft dauerhaft...")
+    schedule.every().day.at("12:00").do(send_autostatus)
 
-    print("🔄 Scheduler läuft dauerhaft...")
     while True:
         schedule.run_pending()
-        time.sleep(60)
-
-if __name__ == "__main__":
-    run_scheduler()
+        time.sleep(30)
