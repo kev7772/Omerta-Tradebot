@@ -5,8 +5,7 @@ from logic import make_trade_decision
 
 DECISION_LOG_FILE = "decision_log.json"
 
-def log_trade_decisions():
-    decisions = make_trade_decision()
+def log_trade_decisions(decisions):
     timestamp = datetime.now().strftime("%Y-%m-%d")
 
     if not os.path.exists(DECISION_LOG_FILE):
