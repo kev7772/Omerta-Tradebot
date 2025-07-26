@@ -19,8 +19,19 @@ from visualize_learning import generate_heatmap
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
+STATIC_URL = os.getenv("RAILWAY_STATIC_URL")
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
+
+# === Webhook setzen ===
+def set_telegram_webhook():
+    if STATIC_URL:
+        webhook_url = f"https://{STATIC_URL}/{BOT_TOKEN}"
+        bot.remove_webhook()
+        bot.set_webhook(url=webhook_url)
+        print(f"ð Webhook gesetzt: {webhook_url}")
+    else:
+        print("â ï¸ Keine STATIC_URL gesetzt â Webhook nicht aktualisiert.")
 
 # === Flask Webhook ===
 @app.route('/')
@@ -39,14 +50,14 @@ def webhook():
 # === Telegram Commands ===
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    bot.send_message(message.chat.id, "👋 Willkommen beim OmertaTradeBot!\nNutze z. B. /status oder /simulate.")
-    print(f"Start-Befehl von Chat ID: {message.chat.id}")
+    bot.send_message(message.chat.id, "ð Willkommen beim OmertaTradeBot!
+Nutze z.â¯B. /status oder /simulate.")
 
 @bot.message_handler(commands=['status'])
 def cmd_status(message):
     if message.chat.id != ADMIN_ID:
         return
-    bot.send_message(message.chat.id, "Bot läuft ✅")
+    bot.send_message(message.chat.id, "Bot lÃ¤uft â")
 
 @bot.message_handler(commands=['enable_trading'])
 def enable_trading(message):
@@ -54,7 +65,7 @@ def enable_trading(message):
     if message.chat.id != ADMIN_ID:
         return
     ALLOW_TRADING = True
-    bot.send_message(message.chat.id, "✅ Trading-Funktion aktiviert!")
+    bot.send_message(message.chat.id, "â Trading-Funktion aktiviert!")
 
 @bot.message_handler(commands=['disable_trading'])
 def disable_trading(message):
@@ -62,16 +73,18 @@ def disable_trading(message):
     if message.chat.id != ADMIN_ID:
         return
     ALLOW_TRADING = False
-    bot.send_message(message.chat.id, "🔒 Trading-Funktion deaktiviert!")
+    bot.send_message(message.chat.id, "ð Trading-Funktion deaktiviert!")
 
 @bot.message_handler(commands=['portfolio'])
 def cmd_portfolio(message):
     if message.chat.id != ADMIN_ID:
         return
     holdings = get_portfolio()
-    text = "📊 Dein Portfolio:\n"
+    text = "ð Dein Portfolio:
+"
     for h in holdings:
-        text += f"{h['coin']}: {h['amount']} → {h['value']} €\n"
+        text += f"{h['coin']}: {h['amount']} â {h['value']} â¬
+"
     bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['profit'])
@@ -79,9 +92,11 @@ def cmd_profit(message):
     if message.chat.id != ADMIN_ID:
         return
     profits = get_profit_estimates()
-    text = "💰 Buchgewinne:\n"
+    text = "ð° Buchgewinne:
+"
     for p in profits:
-        text += f"{p['coin']}: {p['profit']} € ({p['percent']}%)\n"
+        text += f"{p['coin']}: {p['profit']} â¬ ({p['percent']}%)
+"
     bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['panic'])
@@ -90,16 +105,20 @@ def cmd_panic(message):
         return
     trigger, coin = should_trigger_panic()
     if trigger:
-        bot.send_message(message.chat.id, f"⚠️ Notbremse empfohlen bei {coin} (über -25%)!")
+        bot.send_message(message.chat.id, f"â ï¸ Notbremse empfohlen bei {coin} (Ã¼ber -25%)!")
     else:
-        bot.send_message(message.chat.id, "✅ Keine Notbremse nötig.")
+        bot.send_message(message.chat.id, "â Keine Notbremse nÃ¶tig.")
 
 @bot.message_handler(commands=['tradelogic'])
 def cmd_tradelogic(message):
     if message.chat.id != ADMIN_ID:
         return
-    actions = get_trading_decision()
-    text = "🤖 Simulation:\n" + "\n".join(actions)
+    actions = make_trade_decision()
+    text = "ð¤ Simulation:
+"
+    for coin, decision in actions.items():
+        text += f"{coin}: {decision}
+"
     bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['loghistory'])
@@ -107,14 +126,14 @@ def cmd_loghistory(message):
     if message.chat.id != ADMIN_ID:
         return
     write_history()
-    bot.send_message(message.chat.id, "📊 History gespeichert.")
+    bot.send_message(message.chat.id, "ð History gespeichert.")
 
 @bot.message_handler(commands=['simulate'])
 def cmd_simulate(message):
     if message.chat.id != ADMIN_ID:
         return
     run_simulation()
-    bot.send_message(message.chat.id, "🧪 Simulation abgeschlossen.")
+    bot.send_message(message.chat.id, "ð§ª Simulation abgeschlossen.")
 
 @bot.message_handler(commands=['livesimulate'])
 def handle_livesim(message):
@@ -128,7 +147,9 @@ def cmd_recommend(message):
     if message.chat.id != ADMIN_ID:
         return
     recs = recommend_trades()
-    text = "📌 Empfehlungen:\n" + "\n".join(recs)
+    text = "ð Empfehlungen:
+" + "
+".join(recs)
     bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['sentiment'])
@@ -136,9 +157,14 @@ def cmd_sentiment(message):
     if message.chat.id != ADMIN_ID:
         return
     data = get_sentiment_data()
-    text = f"📊 Marktstimmung: {data['sentiment'].upper()}\n"
-    text += f"🔥 Stimmungsscore: {data['score']}\n\n"
-    text += "📡 Quellen:\n" + "\n".join([f"- {s}" for s in data["sources"]])
+    text = f"ð Marktstimmung: {data['sentiment'].upper()}
+"
+    text += f"ð¥ Stimmungsscore: {data['score']}
+
+"
+    text += "ð¡ Quellen:
+" + "
+".join([f"- {s}" for s in data["sources"]])
     bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['indicators'])
@@ -160,69 +186,17 @@ def cmd_indicators(message):
 
         result = calculate_indicators(df)
 
-        text = f"🧠 Technische Analyse BTCUSDT\n"
-        text += f"RSI: {result['rsi']:.2f}\n"
-        text += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}\n"
-        text += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}\n"
+        text = f"ð§  Technische Analyse BTCUSDT
+"
+        text += f"RSI: {result['rsi']:.2f}
+"
+        text += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}
+"
+        text += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}
+"
         text += f"Bollinger%: {result['bb_percent']:.2f}"
 
         bot.send_message(message.chat.id, text)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Fehler bei /indicators:\n{str(e)}")
-
-@bot.message_handler(commands=['forecast'])
-def cmd_forecast(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    lines = forecast_market()
-    bot.send_message(message.chat.id, "🔮 Marktprognose:\n" + "\n".join(lines))
-
-@bot.message_handler(commands=['heatmap'])
-def cmd_heatmap(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    path = generate_heatmap()
-    with open(path, "rb") as f:
-        bot.send_photo(message.chat.id, f, caption="Lern-Heatmap (Coin-Erfolgsquote)")
-
-@bot.message_handler(commands=['learninglog'])
-def handle_learninglog(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    log = get_learning_log()
-    bot.reply_to(message, log)
-
-@bot.message_handler(commands=['forcelearn'])
-def handle_forcelearn(message):
-    if message.chat.id != ADMIN_ID:
-        return
-    results = run_feedback_loop()
-    if not results:
-        bot.send_message(message.chat.id, "📉 Keine offenen Entscheidungen oder Kursdaten fehlen.")
-    else:
-        response = "📈 Lernbewertung abgeschlossen:\n"
-        for r in results:
-            emoji = "✅" if r["success"] > 0 else "❌"
-            response += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
-        bot.send_message(message.chat.id, response)
-
-@bot.message_handler(func=lambda m: True)
-def debug_echo(message):
-    print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
-    bot.send_message(message.chat.id, "✅ Nachricht empfangen.")
-
-# === Bot starten ===
-if __name__ == '__main__':
-    threading.Thread(target=run_scheduler).start()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-
-# === Startlogik ===
-if not os.path.exists("history.json"):
-    with open("history.json", "w") as f:
-        json.dump({}, f)
-
-run_simulation()
-decisions = make_trade_decisions()
-log_trade_decisions(decisions)
-run_feedback_loop()
+        bot.send_message(message.chat.id, f"â Fehler bei /indicators:
+{str(e)}")
