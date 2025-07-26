@@ -224,6 +224,21 @@ def handle_livesim(message):
     response = run_live_simulation()
     bot.reply_to(message, response)
 
+@bot.message_handler(commands=['forcelearn'])
+def handle_forcelearn(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    from feedback_loop import run_feedback_loop
+    results = run_feedback_loop()
+    if not results:
+        bot.send_message(message.chat.id, "📉 Keine offenen Entscheidungen oder Kursdaten fehlen.")
+    else:
+        response = "📈 Lernbewertung abgeschlossen:\n"
+        for r in results:
+            emoji = "✅" if r["success"] > 0 else "❌"
+            response += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
+        bot.send_message(message.chat.id, response)
+
 # === Flask & Scheduler starten ===
 if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
