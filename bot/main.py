@@ -3,24 +3,26 @@ import json
 import threading
 import telebot
 from flask import Flask, request
-import time
 from live_logger import write_history
-from simulator import run_simulation
-from logic import recommend_trades, should_trigger_panic, get_trading_decision
+from simulator import run_simulation, run_live_simulation
+from logic import recommend_trades, should_trigger_panic, get_trading_decision, get_learning_log, get_trade_decisions
 from sentiment_parser import get_sentiment_data
 from indicators import calculate_indicators
 from binance.client import Client
 from trading import get_portfolio, get_profit_estimates
 from scheduler import run_scheduler
-from simulator import run_simulation
+from decision_logger import log_trade_decisions
+from feedback_loop import run_feedback_loop
+from forecast import forecast_market
+from visualize_learning import generate_heatmap
 
-# === Bot & Server Setup ===
+# === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# === Flask Endpunkte ===
+# === Flask Webhook ===
 @app.route('/')
 def index():
     return 'OmertaTradeBot Webhook aktiv'
@@ -34,11 +36,11 @@ def webhook():
         return '', 200
     return '', 403
 
-# === Telegram-Befehle ===
+# === Telegram Commands ===
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    print(f"🧪 Chat-ID empfangen: {message.chat.id}")  # DEBUG
-    bot.send_message(message.chat.id, f"Deine Chat-ID ist: {message.chat.id}")
+    bot.send_message(message.chat.id, "👋 Willkommen beim OmertaTradeBot!\nNutze z. B. /status oder /simulate.")
+    print(f"Start-Befehl von Chat ID: {message.chat.id}")
 
 @bot.message_handler(commands=['status'])
 def cmd_status(message):
@@ -112,7 +114,14 @@ def cmd_simulate(message):
     if message.chat.id != ADMIN_ID:
         return
     run_simulation()
-    bot.send_message(message.chat.id, "🧪 Simulation abgeschlossen. Ergebnisse in 'simulation_log.json'.")
+    bot.send_message(message.chat.id, "🧪 Simulation abgeschlossen.")
+
+@bot.message_handler(commands=['livesimulate'])
+def handle_livesim(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    response = run_live_simulation()
+    bot.reply_to(message, response)
 
 @bot.message_handler(commands=['recommend'])
 def cmd_recommend(message):
@@ -158,7 +167,6 @@ def cmd_indicators(message):
         text += f"Bollinger%: {result['bb_percent']:.2f}"
 
         bot.send_message(message.chat.id, text)
-
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Fehler bei /indicators:\n{str(e)}")
 
@@ -166,7 +174,6 @@ def cmd_indicators(message):
 def cmd_forecast(message):
     if message.chat.id != ADMIN_ID:
         return
-    from forecast import forecast_market
     lines = forecast_market()
     bot.send_message(message.chat.id, "🔮 Marktprognose:\n" + "\n".join(lines))
 
@@ -174,59 +181,21 @@ def cmd_forecast(message):
 def cmd_heatmap(message):
     if message.chat.id != ADMIN_ID:
         return
-    from visualize_learning import generate_heatmap
     path = generate_heatmap()
     with open(path, "rb") as f:
         bot.send_photo(message.chat.id, f, caption="Lern-Heatmap (Coin-Erfolgsquote)")
 
-@bot.message_handler(commands=['simlog'])
-def send_simulation_log(message):
-    try:
-        with open("learninglog.json", "r") as f:
-            logs = f.readlines()[-5:]  # letzte 5 Logs
-        response = "\n".join([json.loads(l).get("szenario", "") + " – " + json.loads(l).get("aktion", "") for l in logs])
-        bot.reply_to(message, f"Letzte Simulationen:\n{response}")
-    except:
-        bot.reply_to(message, "Keine Simulationen gefunden.")
-
-import os
-import telebot
-from logic import get_learning_log
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = telebot.TeleBot(BOT_TOKEN)
-
 @bot.message_handler(commands=['learninglog'])
 def handle_learninglog(message):
-    print("📥 /learninglog empfangen")
+    if message.chat.id != ADMIN_ID:
+        return
     log = get_learning_log()
-    print("📤 Antwort an Telegram:", log)
     bot.reply_to(message, log)
-
-from simulator import run_simulation  # Importieren
-
-@bot.message_handler(commands=['simulate'])
-def handle_simulate(message):
-    result_text = run_simulation()
-    bot.reply_to(message, result_text)
-    
-from simulator import run_simulation, run_live_simulation
-
-@bot.message_handler(commands=['simulate'])
-def handle_simulate(message):
-    response = run_simulation()
-    bot.reply_to(message, response)
-
-@bot.message_handler(commands=['livesimulate'])
-def handle_livesim(message):
-    response = run_live_simulation()
-    bot.reply_to(message, response)
 
 @bot.message_handler(commands=['forcelearn'])
 def handle_forcelearn(message):
     if message.chat.id != ADMIN_ID:
         return
-    from feedback_loop import run_feedback_loop
     results = run_feedback_loop()
     if not results:
         bot.send_message(message.chat.id, "📉 Keine offenen Entscheidungen oder Kursdaten fehlen.")
@@ -237,25 +206,23 @@ def handle_forcelearn(message):
             response += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
         bot.send_message(message.chat.id, response)
 
-# === Flask & Scheduler starten ===
+@bot.message_handler(func=lambda m: True)
+def debug_echo(message):
+    print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
+    bot.send_message(message.chat.id, "✅ Nachricht empfangen.")
+
+# === Bot starten ===
 if __name__ == '__main__':
     threading.Thread(target=run_scheduler).start()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
-# history.json anlegen, falls nicht vorhanden
+# === Startlogik ===
 if not os.path.exists("history.json"):
     with open("history.json", "w") as f:
         json.dump({}, f)
 
-# Direkt beim Start:
 run_simulation()
-
-from logic import get_trade_decisions
-from decision_logger import log_trade_decisions
-
 decisions = get_trade_decisions()
 log_trade_decisions(decisions)
-
-from feedback_loop import run_feedback_loop
 run_feedback_loop()
