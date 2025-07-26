@@ -237,3 +237,9 @@ if not os.path.exists("history.json"):
 
 # Direkt beim Start:
 run_simulation()
+
+from logic import get_trade_decisions
+from decision_logger import log_trade_decisions
+
+decisions = get_trade_decisions()
+log_trade_decisions(decisions)
