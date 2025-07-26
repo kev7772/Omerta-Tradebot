@@ -10,3 +10,4 @@ matplotlib
 fpdf
 openpyxl
 numpy
+seaborn
