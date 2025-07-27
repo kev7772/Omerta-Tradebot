@@ -64,11 +64,12 @@ def run_simulation():
         "success": round(abs(percent_change), 2) if decision in ["verkauft", "gekauft"] else 0.0
     }
 
-    save_simulation_log(log_entry)
+    save_simulation_log([log_entry], batch=True)
+    log_simulation_meta(log_entry)
     return f"ð Historische Simulation abgeschlossen ({scenario['name']} â {scenario['coin']})"
 
 def run_live_simulation():
-    print("ð Starte Live-Simulation mit echten Kursdaten...")
+    print("âï¸ Starte Live-Simulation mit echten Kursdaten...")
 
     try:
         prices = client.get_all_tickers()
@@ -94,6 +95,7 @@ def run_live_simulation():
             })
 
     save_simulation_log(log_entries, batch=True)
+    log_simulation_meta({"date": timestamp, "anzahl": len(log_entries), "typ": "live"})
 
     for entry in log_entries:
         print(f"[*] {entry['coin']} â Preis: {entry['preis_live']} â¬ â Entscheidung: {entry['entscheidung']}")
@@ -129,19 +131,31 @@ def evaluate_decision(decision, percent_change):
 def save_simulation_log(entries, batch=False):
     filepath = "simulation_log.json"
     try:
-        try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            data = []
+        with open(filepath, "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = []
 
-        if batch:
-            data.extend(entries)
-        else:
-            data.append(entries)
+    if batch:
+        data.extend(entries)
+    else:
+        data.append(entries)
 
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
+    with open(filepath, "w") as f:
+        json.dump(data, f, indent=2)
 
-    except Exception as e:
-        print(f"â Fehler beim Schreiben in Log-Datei: {e}")
+def log_simulation_meta(entry):
+    filepath = "log_simulation.json"
+    try:
+        with open(filepath, "r") as f:
+            meta = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        meta = {"simulationen": []}
+
+    meta["simulationen"].append({
+        "datum": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "info": entry
+    })
+
+    with open(filepath, "w") as f:
+        json.dump(meta, f, indent=2)
