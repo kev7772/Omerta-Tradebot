@@ -192,21 +192,40 @@ def handle_learninglog(message):
     log = get_learning_log()
     bot.reply_to(message, log)
 
-@bot.message_handler(commands=['simstatus'])
+@bot.message_handler(commands=["simstatus"])
 def simstatus_handler(message):
+    filepath = "simulation_log.json"
+
+    if not os.path.exists(filepath):
+        bot.reply_to(message, "❌ Noch keine Simulationen durchgeführt.")
+        return
+
     try:
-        if os.path.exists("log_simulation.json"):
-            with open("log_simulation.json", "r") as f:
-                data = json.load(f)
-            simulations = data.get("simulationen", [])
-            count = len(simulations)
-            last = simulations[-1]["datum"] if count else "–"
-            msg = f"📊 Simulationsstatus:\nAnzahl: {count}\nLetzte: {last}"
-        else:
-            msg = "📊 Keine Simulationen gespeichert."
-    except Exception as e:
-        msg = f"⚠️ Fehler: {e}"
-    bot.send_message(message.chat.id, msg)
+        with open(filepath, "r") as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        bot.reply_to(message, "⚠️ simulation_log.json ist beschädigt.")
+        return
+
+    if not data:
+        bot.reply_to(message, "ℹ️ simulation_log.json ist leer.")
+        return
+
+    # Anzahl & letzter Eintrag
+    total = len(data)
+    last = data[-1]
+    last_date = last.get("date", "???")
+    last_coin = last.get("coin", "???")
+    last_type = last.get("verhalten", "???")
+
+    msg = (
+        f"📊 *Simulationsstatus:*\n"
+        f"🧮 Anzahl Einträge: *{total}*\n"
+        f"🕒 Letzte Simulation: *{last_date}*\n"
+        f"🪙 Coin: *{last_coin}*\n"
+        f"🧠 Verhalten: *{last_type}*"
+    )
+    bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['forcelearn'])
 def handle_forcelearn(message):
