@@ -16,6 +16,7 @@ from feedback_loop import run_feedback_loop
 from forecast import forecast_market
 from visualize_learning import generate_heatmap
 from feedback_loop import run_feedback_loop
+from ghost_mode import run_ghost_mode
 
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -267,6 +268,33 @@ def handle_crawlerstatus(message):
     except Exception as e:
         response = f"❌ Fehler beim Abruf: {e}"
     bot.send_message(message.chat.id, response)
+
+@bot.message_handler(commands=['ghostmode'])
+def toggle_ghost_mode(message):
+    bot.send_message(message.chat.id, "👻 Ghost-Modus ist *aktiviert*. Scanne still den Markt...", parse_mode="Markdown")
+    trades = run_ghost_mode()
+    if trades:
+        msg = "⚔️ Neue Ghost Entries:\n\n"
+        for t in trades:
+            msg += f"• {t['coin']}: {t['reason']}\n"
+        bot.send_message(message.chat.id, msg)
+    else:
+        bot.send_message(message.chat.id, "Keine Ghost Entries im aktuellen Durchlauf.")
+
+@bot.message_handler(commands=['ghostlog'])
+def send_ghost_log(message):
+    try:
+        with open("ghost_log.json", "r") as f:
+            entries = json.load(f)
+        if not entries:
+            bot.send_message(message.chat.id, "Ghost Log ist leer.")
+            return
+        response = "📜 Ghost Log Einträge:\n\n"
+        for e in entries[-5:]:  # nur die letzten 5 zeigen
+            response += f"🕓 {e['time']}\n💀 {e['coin']}: {e['reason']}\n\n"
+        bot.send_message(message.chat.id, response)
+    except:
+        bot.send_message(message.chat.id, "⚠️ Kein Ghost Log gefunden.")
 
 @bot.message_handler(func=lambda m: True)
 def debug_echo(message):
