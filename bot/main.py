@@ -192,6 +192,18 @@ def handle_learninglog(message):
     log = get_learning_log()
     bot.reply_to(message, log)
 
+@bot.message_handler(commands=['ghost'])
+def send_ghost_trades(message):
+    ghost_trades = run_ghost_analysis()
+    if ghost_trades:
+        response = "👻 *Ghost Entries gefunden:*\n\n"
+        for t in ghost_trades:
+            response += f"🔍 {t['coin']}: {t['reason']}\n"
+    else:
+        response = "Kein Ghost Entry aktuell. Markt ist laut."
+
+    bot.send_message(message.chat.id, response, parse_mode="Markdown")
+
 @bot.message_handler(commands=["simstatus"])
 def simstatus_handler(message):
     filepath = "simulation_log.json"
