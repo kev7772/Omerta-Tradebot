@@ -11,20 +11,14 @@ def should_trigger_panic():
     return False, None
 
 def get_trading_decision():
-    """
-    Kombinierte Logik: Einschätzung auf Basis von Sentiment + Gewinnpotenzial
-    Für Anzeige im Bot (z. B. bei /tradelogic)
-    """
     profits = get_profit_estimates()
     if not profits:
         return ["⚠️ Keine Kursdaten verfügbar"]
 
     sentiment_info = get_sentiment_data()
     sentiment = sentiment_info['sentiment']
-
     decisions = []
 
-    # Sentiment-Analyse
     if sentiment == "bullish":
         decisions.append("📈 Marktstimmung bullish – mehr Risiko erlaubt.")
     elif sentiment == "bearish":
@@ -32,7 +26,6 @@ def get_trading_decision():
     else:
         decisions.append("😐 Neutrale Stimmung – keine großen Bewegungen.")
 
-    # Einschätzung pro Coin (Erfahrener Trader)
     for p in profits:
         if p['percent'] > 15:
             decisions.append(f"{p['coin']}: 🔼 Hätte verkauft")
@@ -44,10 +37,6 @@ def get_trading_decision():
     return decisions
 
 def recommend_trades():
-    """
-    Liefert Empfehlungen auf Basis von Gewinn + aktueller Stimmung
-    (für Telegram /recommend)
-    """
     profits = get_profit_estimates()
     if not profits:
         return ["⚠️ Keine Kursdaten verfügbar"]
@@ -67,7 +56,6 @@ def recommend_trades():
                 recommendations.append(f"{coin}: ⚠️ Beobachten – trotz bullisher Lage fällt der Kurs ({percent}%)")
             else:
                 recommendations.append(f"{coin}: 🤝 Halten")
-
         elif sentiment == "bearish":
             if percent > 8:
                 recommendations.append(f"{coin}: 🔼 Gewinn sichern! Markt könnte kippen (+{percent}%)")
@@ -75,8 +63,7 @@ def recommend_trades():
                 recommendations.append(f"{coin}: 🚨 Meiden / Risiko ({percent}%)")
             else:
                 recommendations.append(f"{coin}: ⛔ Nicht handeln – Markt unsicher")
-
-        else:  # neutral
+        else:
             if percent > 15:
                 recommendations.append(f"{coin}: 📈 Verkauf denkbar (+{percent}%)")
             elif percent < -15:
@@ -87,10 +74,6 @@ def recommend_trades():
     return recommendations
 
 def make_trade_decision():
-    """
-    Interne Simulation mit Sentiment-Faktor
-    Gibt dict {coin: "BUY" | "SELL" | "HOLD"} zurück
-    """
     profits = get_profit_estimates()
     if not profits:
         return {"info": "⚠️ Keine Kursdaten verfügbar"}
@@ -110,14 +93,12 @@ def make_trade_decision():
                 decisions[coin] = "HOLD"
             else:
                 decisions[coin] = "BUY"
-
         elif sentiment == "bearish":
             if percent > 12:
                 decisions[coin] = "SELL"
             else:
                 decisions[coin] = "HOLD"
-
-        else:  # neutral
+        else:
             if percent > 18:
                 decisions[coin] = "SELL"
             elif percent < -10:
@@ -148,14 +129,12 @@ def get_learning_log():
         print("ℹ️ Datei ist leer.")
         return "📘 Lernlog ist leer."
 
-    output = "📘 Lernverlauf (letzte 5 Einträge):
-"
+    output = "📘 Lernverlauf (letzte 5 Einträge):\n"
     for eintrag in data[-5:]:
         datum = eintrag.get("date", "???")
         coin = eintrag.get("coin", "???")
         erfolg = eintrag.get("success", "?")
-        output += f"📅 {datum} | {coin} | Erfolg: {erfolg}%
-"
+        output += f"📅 {datum} | {coin} | Erfolg: {erfolg}%\n"
 
     print("✅ Ausgabe an Telegram:", output)
     return output
