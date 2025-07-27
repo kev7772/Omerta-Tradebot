@@ -149,7 +149,7 @@ def evaluate_decision(decision, percent_change):
         return "Neutral / kein klarer Vorteil"
 
 def save_simulation_log(entries, batch=False):
-    filepath = "simulation_log.json""
+    filepath = "simulation_log.json"
 
     try:
         try:
