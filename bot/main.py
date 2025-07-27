@@ -15,6 +15,7 @@ from decision_logger import log_trade_decisions
 from feedback_loop import run_feedback_loop
 from forecast import forecast_market
 from visualize_learning import generate_heatmap
+from feedback_loop import run_feedback_loop
 
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
