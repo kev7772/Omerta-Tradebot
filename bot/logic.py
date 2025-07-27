@@ -44,6 +44,8 @@ def recommend_trades():
     (für Telegram /recommend)
     """
     profits = get_profit_estimates()
+    if not profits:
+    return {"info": "⚠️ Keine Kursdaten verfügbar"}
     sentiment_info = get_sentiment_data()
     sentiment = sentiment_info['sentiment']
     recommendations = []
@@ -84,6 +86,8 @@ def make_trade_decision():
     Gibt dict {coin: "BUY" | "SELL" | "HOLD"} zurück
     """
     profits = get_profit_estimates()
+    if not profits:
+    return {"info": "⚠️ Keine Kursdaten verfügbar"}
     sentiment_info = get_sentiment_data()
     sentiment = sentiment_info['sentiment']
     decisions = {}
