@@ -21,3 +21,26 @@ def detect_hype_signals():
             })
 
     return hype_alerts
+
+def detect_manipulation_signals():
+    try:
+        with open("crawler_data.json", "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+    suspicious = []
+    for entry in data:
+        score = entry.get("trend_score", 0)
+        mentions = entry.get("mentions", 0)
+        social_push = entry.get("social_signal", 0)  # z. B. Retweets, Upvotes etc.
+
+        if score > 8 and social_push > 5:
+            suspicious.append({
+                "coin": entry.get("coin", "unbekannt"),
+                "score": score,
+                "social": social_push,
+                "timestamp": entry.get("timestamp")
+            })
+
+    return suspicious
