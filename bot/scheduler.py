@@ -59,3 +59,6 @@ def run_scheduler():
     while True:
         schedule.run_pending()
         time.sleep(30)
+
+from crawler import run_crawler
+schedule.every().hour.do(run_crawler)
