@@ -62,3 +62,12 @@ def run_scheduler():
 
 from crawler import run_crawler
 schedule.every().hour.do(run_crawler)
+
+from crawler_alert import detect_hype_signals
+
+hype_alerts = detect_hype_signals()
+if hype_alerts:
+    alert_msg = "🚨 Hype-Alarm:\n"
+    for h in hype_alerts:
+        alert_msg += f"{h['coin']} (Score: {h['score']})\nQuellen: {', '.join(h['sources'])}\n\n"
+    bot.send_message(ADMIN_ID, alert_msg)
