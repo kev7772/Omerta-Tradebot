@@ -102,3 +102,11 @@ def run_crawler():
         print("✅ Daten erfolgreich gespeichert.")
     except Exception as e:
         print(f"❌ Fehler beim Speichern: {e}")
+
+def get_crawler_data():
+    try:
+        with open("crawler_data.json", "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[GhostMode] Fehler beim Laden der crawler_data.json: {e}")
+        return {}
