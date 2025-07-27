@@ -1,5 +1,7 @@
 from trading import get_profit_estimates
 from sentiment_parser import get_sentiment_data
+import json
+import os
 
 def should_trigger_panic():
     profits = get_profit_estimates()
@@ -14,6 +16,9 @@ def get_trading_decision():
     Für Anzeige im Bot (z. B. bei /tradelogic)
     """
     profits = get_profit_estimates()
+    if not profits:
+        return ["⚠️ Keine Kursdaten verfügbar"]
+
     sentiment_info = get_sentiment_data()
     sentiment = sentiment_info['sentiment']
 
@@ -45,7 +50,8 @@ def recommend_trades():
     """
     profits = get_profit_estimates()
     if not profits:
-    return {"info": "⚠️ Keine Kursdaten verfügbar"}
+        return ["⚠️ Keine Kursdaten verfügbar"]
+
     sentiment_info = get_sentiment_data()
     sentiment = sentiment_info['sentiment']
     recommendations = []
@@ -61,7 +67,7 @@ def recommend_trades():
                 recommendations.append(f"{coin}: ⚠️ Beobachten – trotz bullisher Lage fällt der Kurs ({percent}%)")
             else:
                 recommendations.append(f"{coin}: 🤝 Halten")
-        
+
         elif sentiment == "bearish":
             if percent > 8:
                 recommendations.append(f"{coin}: 🔼 Gewinn sichern! Markt könnte kippen (+{percent}%)")
@@ -69,7 +75,7 @@ def recommend_trades():
                 recommendations.append(f"{coin}: 🚨 Meiden / Risiko ({percent}%)")
             else:
                 recommendations.append(f"{coin}: ⛔ Nicht handeln – Markt unsicher")
-        
+
         else:  # neutral
             if percent > 15:
                 recommendations.append(f"{coin}: 📈 Verkauf denkbar (+{percent}%)")
@@ -87,7 +93,8 @@ def make_trade_decision():
     """
     profits = get_profit_estimates()
     if not profits:
-    return {"info": "⚠️ Keine Kursdaten verfügbar"}
+        return {"info": "⚠️ Keine Kursdaten verfügbar"}
+
     sentiment_info = get_sentiment_data()
     sentiment = sentiment_info['sentiment']
     decisions = {}
@@ -118,13 +125,7 @@ def make_trade_decision():
             else:
                 decisions[coin] = "BUY"
 
-    if not profits:
-    return {"info": "⚠️ Keine Kursdaten verfügbar"}
-
     return decisions
-
-import json
-import os
 
 def get_learning_log():
     filepath = os.path.join(os.path.dirname(__file__), "learning_log.json")
@@ -147,12 +148,14 @@ def get_learning_log():
         print("ℹ️ Datei ist leer.")
         return "📘 Lernlog ist leer."
 
-    output = "📘 Lernverlauf (letzte 5 Einträge):\n"
+    output = "📘 Lernverlauf (letzte 5 Einträge):
+"
     for eintrag in data[-5:]:
         datum = eintrag.get("date", "???")
         coin = eintrag.get("coin", "???")
         erfolg = eintrag.get("success", "?")
-        output += f"📅 {datum} | {coin} | Erfolg: {erfolg}%\n"
+        output += f"📅 {datum} | {coin} | Erfolg: {erfolg}%
+"
 
     print("✅ Ausgabe an Telegram:", output)
     return output
