@@ -1,1 +1,2 @@
-web: python bot/main.py
+web: python main.py
+worker: python scheduler.py
