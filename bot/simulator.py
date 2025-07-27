@@ -114,11 +114,10 @@ def run_live_simulation():
             })
 
     save_simulation_log(log_entries, batch=True)
+    for entry in log_entries:
+    print(f"🪙 {entry['coin']} – Preis: {entry['preis_live']} €, Entscheidung: {entry['entscheidung']}")
 
     return f"✅ Live-Simulation abgeschlossen mit {len(log_entries)} Coins."
-
-for entry in log_entries:
-    print(f"🪙 {entry['coin']} – Preis: {entry['preis_live']} €, Entscheidung: {entry['entscheidung']}")
 
 # ========== LOGIK & SPEICHERN ==========
 
