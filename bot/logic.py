@@ -114,6 +114,9 @@ def make_trade_decision():
             else:
                 decisions[coin] = "BUY"
 
+    if not profits:
+    return {"info": "⚠️ Keine Kursdaten verfügbar"}
+
     return decisions
 
 import json
