@@ -138,3 +138,12 @@ def get_learning_log():
 
     print("✅ Ausgabe an Telegram:", output)
     return output
+
+from ghost_mode import detect_stealth_entry
+
+def run_ghost_analysis():
+    profits = get_profit_estimates()
+    sentiment = get_sentiment_data()
+    crawler_data = get_crawler_data()
+
+    return detect_stealth_entry(profits, sentiment, crawler_data)
