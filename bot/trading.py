@@ -40,6 +40,8 @@ def get_portfolio():
             if coin and total > 0 and coin != 'USDT':
                 symbol = coin + 'USDT'
                 current_price = price_map.get(symbol, 0)
+                if current_price == 0:
+                    continue
                 value_eur = round((current_price / eur_rate) * total, 2)
                 holdings.append({
                     'coin': coin,
@@ -96,13 +98,13 @@ def get_profit_estimates():
     for coin in current:
         symbol = coin['coin']
         current_price = coin['price']
-        old_price = float(old_prices.get(symbol, 0))
+        old_price = old_prices.get(symbol)
 
-        if old_price > 0:
-            percent = ((current_price - old_price) / old_price) * 100
-        else:
-            percent = 0
+        if old_price is None or old_price == 0:
+            print(f"⚠️ Kein alter Preis für {symbol} – überspringe")
+            continue
 
+        percent = ((current_price - old_price) / old_price) * 100
         results.append({
             "coin": symbol,
             "old": old_price,
@@ -139,11 +141,8 @@ def simulate_trade(decision, balance, portfolio, prices):
         elif action == "SELL" and coin in portfolio:
             balance += portfolio[coin] * price_eur
             portfolio[coin] = 0
-    return 
-    {"balance": round(balance, 2),
-        "portfolio": portfolio}
 
-from simulator import run_simulation
-
-# Beispiel in main.py oder trading.py
-run_simulation()  # beim Start oder via Timer/Trigger
+    return {
+        "balance": round(balance, 2),
+        "portfolio": portfolio
+    }
