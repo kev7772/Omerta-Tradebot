@@ -3,6 +3,8 @@ import time
 import os
 from trading import get_portfolio, get_profit_estimates
 from sentiment_parser import get_sentiment_data
+from live_logger import write_history
+from feedback_loop import run_feedback_loop
 from telebot import TeleBot
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -30,8 +32,20 @@ def send_autostatus():
     sent_msg += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sentiment['sources']])
     bot.send_message(ADMIN_ID, sent_msg)
 
+    # Lernfeedback
+    results = run_feedback_loop()
+    if results:
+        response = "📈 Lernbewertung (Auto):\n"
+        for r in results:
+            emoji = "✅" if r["success"] > 0 else "❌"
+            response += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
+        bot.send_message(ADMIN_ID, response)
+    else:
+        bot.send_message(ADMIN_ID, "📘 Keine offenen Lernbewertungen (Auto).")
+
 def run_scheduler():
     print("⏰ Scheduler läuft dauerhaft...")
+    schedule.every().day.at("00:05").do(write_history)
     schedule.every().day.at("12:00").do(send_autostatus)
     while True:
         schedule.run_pending()
