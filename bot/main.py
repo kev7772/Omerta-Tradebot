@@ -241,6 +241,21 @@ def handle_forcelearn(message):
             response += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
         bot.send_message(message.chat.id, response)
 
+@bot.message_handler(commands=["crawlerstatus"])
+def handle_crawlerstatus(message):
+    try:
+        with open("crawler_data.json", "r") as f:
+            data = json.load(f)
+        last_entry = data[-1]
+        response = f"📊 Letzte Crawler-Analyse:\n"
+        response += f"🪙 Coin: {last_entry.get('coin')}\n"
+        response += f"🔥 Score: {last_entry.get('trend_score')}\n"
+        response += f"📡 Quellen: {', '.join(last_entry.get('sources', []))}\n"
+        response += f"🕒 Zeitpunkt: {last_entry.get('timestamp')}"
+    except Exception as e:
+        response = f"❌ Fehler beim Abruf: {e}"
+    bot.send_message(message.chat.id, response)
+
 @bot.message_handler(func=lambda m: True)
 def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
