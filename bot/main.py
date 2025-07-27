@@ -192,6 +192,22 @@ def handle_learninglog(message):
     log = get_learning_log()
     bot.reply_to(message, log)
 
+@bot.message_handler(commands=['simstatus'])
+def simstatus_handler(message):
+    try:
+        if os.path.exists("log_simulation.json"):
+            with open("log_simulation.json", "r") as f:
+                data = json.load(f)
+            simulations = data.get("simulationen", [])
+            count = len(simulations)
+            last = simulations[-1]["datum"] if count else "–"
+            msg = f"📊 Simulationsstatus:\nAnzahl: {count}\nLetzte: {last}"
+        else:
+            msg = "📊 Keine Simulationen gespeichert."
+    except Exception as e:
+        msg = f"⚠️ Fehler: {e}"
+    bot.send_message(message.chat.id, msg)
+
 @bot.message_handler(commands=['forcelearn'])
 def handle_forcelearn(message):
     if message.chat.id != ADMIN_ID:
