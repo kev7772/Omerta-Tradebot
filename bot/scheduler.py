@@ -71,3 +71,14 @@ if hype_alerts:
     for h in hype_alerts:
         alert_msg += f"{h['coin']} (Score: {h['score']})\nQuellen: {', '.join(h['sources'])}\n\n"
     bot.send_message(ADMIN_ID, alert_msg)
+
+from ghost_mode import run_ghost_mode
+
+def ghost_schedule():
+    entries = run_ghost_mode()
+    if entries:
+        print(f"[GhostMode] {len(entries)} Ghost Entries erkannt.")
+    else:
+        print("[GhostMode] Keine Einträge.")
+
+schedule.every(1).hours.do(ghost_schedule)
