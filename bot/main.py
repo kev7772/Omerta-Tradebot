@@ -296,6 +296,21 @@ def send_ghost_log(message):
     except:
         bot.send_message(message.chat.id, "⚠️ Kein Ghost Log gefunden.")
 
+@bot.message_handler(commands=['ghoststatus'])
+def handle_ghoststatus(message):
+    try:
+        from ghost_mode import check_ghost_exit
+        exits = check_ghost_exit()
+        if not exits:
+            bot.send_message(message.chat.id, "👻 Keine neuen Ghost Exits.")
+        else:
+            text = "⚠️ Ghost Exits erkannt:\n\n"
+            for e in exits:
+                text += f"• {e['coin']} → {e['success']} % Gewinn\n📤 Exit: {e['exit_time']}\n\n"
+            bot.send_message(message.chat.id, text)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Fehler bei /ghoststatus: {e}")
+
 @bot.message_handler(func=lambda m: True)
 def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
