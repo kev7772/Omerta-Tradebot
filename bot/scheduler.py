@@ -109,7 +109,8 @@ def run_scheduled_tasks():
     ...
 
 def get_scheduler_status():
-    from datetime import datetime
+    from datetime import datetime, timedelta
+    now = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
 
     status = "🗓️ *Omerta Scheduler Status:*\n\n"
     status += "🧠 Aktive Hintergrundprozesse:\n"
@@ -120,8 +121,6 @@ def get_scheduler_status():
     status += "• Feedback-Learning (6h)\n"
     status += "• Historische Simulation (12h)\n"
     status += "• Autostatus-Bericht (12:00 täglich)\n"
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     status += f"\n🕒 Stand: {now}"
 
     return status
