@@ -47,3 +47,34 @@ def run_ghost_mode():
             json.dump(log, f, indent=2)
 
     return new_entries
+
+from datetime import datetime
+import json
+import os
+
+def check_ghost_exit():
+    if not os.path.exists("ghost_log.json"):
+        return []
+
+    with open("ghost_log.json", "r") as f:
+        entries = json.load(f)
+
+    updated = []
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for entry in entries:
+        if "exit_time" in entry:
+            continue  # Schon abgeschlossen
+
+        # Beispiel: Exit-Bedingung → starker Kursanstieg oder Sentiment-Hype
+        if simulate_exit_trigger(entry["coin"]):
+            entry["exit_time"] = now
+            entry["exit_reason"] = "Hype erkannt"
+            entry["success"] = simulate_trade_success(entry)
+            updated.append(entry)
+
+    # Log aktualisieren
+    with open("ghost_log.json", "w") as f:
+        json.dump(entries, f, indent=2)
+
+    return updated
