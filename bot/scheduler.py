@@ -81,4 +81,22 @@ def ghost_schedule():
     else:
         print("[GhostMode] Keine Einträge.")
 
+import schedule
+from ghost_mode import run_ghost_mode
+from live_logger import write_history
+from feedback_loop import run_feedback_loop
+from simulator import run_simulation
+
+def run_scheduled_tasks():
+    schedule.every(1).hours.do(run_ghost_mode)        # Ghost Entries prüfen
+    schedule.every(1).hours.do(write_history)         # Prices in history.json schreiben
+    schedule.every(6).hours.do(run_feedback_loop)     # Lernlogik regelmäßig bewerten
+    schedule.every(12).hours.do(run_simulation)       # Simulation laufen lassen
+
+def run_scheduler():
+    run_scheduled_tasks()
+    import time
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 schedule.every(1).hours.do(ghost_schedule)
