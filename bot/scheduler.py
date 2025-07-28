@@ -100,3 +100,10 @@ def run_scheduler():
         schedule.run_pending()
         time.sleep(1)
 schedule.every(1).hours.do(ghost_schedule)
+
+from ghost_mode import run_ghost_mode, check_ghost_exit
+
+def run_scheduled_tasks():
+    schedule.every(1).hours.do(run_ghost_mode)
+    schedule.every(1).hours.do(check_ghost_exit)  # Exit-Logik aktiv
+    ...
