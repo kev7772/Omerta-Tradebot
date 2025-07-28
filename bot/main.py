@@ -311,6 +311,19 @@ def handle_ghoststatus(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Fehler bei /ghoststatus: {e}")
 
+@bot.message_handler(commands=["ghostranking"])
+def handle_ghost_ranking(message):
+    from ghost_mode import get_ghost_performance_ranking
+    ranking = get_ghost_performance_ranking()
+    if not ranking:
+        bot.send_message(message.chat.id, "⚠️ Noch keine abgeschlossenen Ghost-Trades gefunden.")
+        return
+
+    msg = "👑 *Top Ghost-Träger (nach durchschnittlichem Erfolg):*\n\n"
+    for r in ranking[:10]:  # Top 10
+        msg += f"• {r['coin']}: {r['durchschnitt']} % ⎯ {r['anzahl']} Trades\n"
+    bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda m: True)
 def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
