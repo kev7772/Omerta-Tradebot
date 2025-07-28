@@ -145,7 +145,7 @@ def save_simulation_log(entries, batch=False):
         json.dump(data, f, indent=2)
 
 def log_simulation_meta(entry):
-    filepath = "log_simulation.json"
+    filepath = "simulation_log.json"
     try:
         with open(filepath, "r") as f:
             meta = json.load(f)
@@ -159,3 +159,22 @@ def log_simulation_meta(entry):
 
     with open(filepath, "w") as f:
         json.dump(meta, f, indent=2)
+
+def run_simulation():
+    results = []
+
+    # Simulationscode … füllt results
+
+    with open("simulation_log.json", "r") as f:
+        log = json.load(f)
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for r in results:
+        log.append({
+            "date": now,
+            "coin": r["coin"],
+            "verhalten": r["verhalten"]
+        })
+
+    with open("simulation_log.json", "w") as f:
+        json.dump(log, f, indent=2)
