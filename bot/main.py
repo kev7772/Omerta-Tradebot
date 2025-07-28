@@ -324,6 +324,14 @@ def handle_ghost_ranking(message):
         msg += f"• {r['coin']}: {r['durchschnitt']} % ⎯ {r['anzahl']} Trades\n"
     bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
+@bot.message_handler(commands=['schedulerstatus'])
+def scheduler_status_handler(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    from scheduler import get_scheduler_status
+    status = get_scheduler_status()
+    bot.send_message(message.chat.id, status, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda m: True)
 def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
