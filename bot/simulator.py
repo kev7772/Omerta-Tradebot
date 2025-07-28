@@ -46,7 +46,7 @@ historical_scenarios = [
 ]
 
 def run_simulation():
-    print("ð Starte historische Simulation...")
+    print("🔁 Starte historische Simulation...")
 
     scenario = random.choice(historical_scenarios)
     decision = get_decision_based_on_scenario(scenario)
@@ -58,7 +58,7 @@ def run_simulation():
         "coin": scenario["coin"],
         "preis_vorher": scenario["price_before"],
         "preis_nachher": scenario["price_after"],
-        "Ã¤nderung": f"{percent_change:.2f}%",
+        "änderung": f"{percent_change:.2f}%",
         "entscheidung": decision,
         "verhalten": evaluate_decision(decision, percent_change),
         "success": round(abs(percent_change), 2) if decision in ["verkauft", "gekauft"] else 0.0
@@ -66,15 +66,15 @@ def run_simulation():
 
     save_simulation_log([log_entry], batch=True)
     log_simulation_meta(log_entry)
-    return f"ð Historische Simulation abgeschlossen ({scenario['name']} â {scenario['coin']})"
+    return f"📊 Historische Simulation abgeschlossen ({scenario['name']} – {scenario['coin']})"
 
 def run_live_simulation():
-    print("âï¸ Starte Live-Simulation mit echten Kursdaten...")
+    print("⚙️ Starte Live-Simulation mit echten Kursdaten...")
 
     try:
         prices = client.get_all_tickers()
     except Exception as e:
-        return f"â Fehler beim Abrufen der Live-Daten: {e}"
+        return f"❌ Fehler beim Abrufen der Live-Daten: {e}"
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     selected_coins = ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "LTCUSDT"]
@@ -98,9 +98,9 @@ def run_live_simulation():
     log_simulation_meta({"date": timestamp, "anzahl": len(log_entries), "typ": "live"})
 
     for entry in log_entries:
-        print(f"[*] {entry['coin']} â Preis: {entry['preis_live']} â¬ â Entscheidung: {entry['entscheidung']}")
+        print(f"[*] {entry['coin']} – Preis: {entry['preis_live']} € – Entscheidung: {entry['entscheidung']}")
 
-    return f"â Live-Simulation abgeschlossen mit {len(log_entries)} Coins."
+    return f"✅ Live-Simulation abgeschlossen mit {len(log_entries)} Coins."
 
 def get_decision_based_on_scenario(scenario):
     if scenario["volume_crash"] or scenario["price_after"] < (0.3 * scenario["price_before"]):
@@ -120,9 +120,9 @@ def simulate_live_decision(coin, price):
 
 def evaluate_decision(decision, percent_change):
     if decision == "verkauft" and percent_change < -50:
-        return "Top â Verlust vermieden"
+        return "Top – Verlust vermieden"
     elif decision == "gehalten" and percent_change < -50:
-        return "Fehler â HÃ¤tte verkaufen sollen"
+        return "Fehler – Hätte verkaufen sollen"
     elif decision == "gekauft" and percent_change > 0:
         return "Guter Einstieg"
     else:
@@ -139,13 +139,13 @@ def save_simulation_log(entries, batch=False):
     if batch:
         data.extend(entries)
     else:
-        data.append(entries)
+        data.append(entries[0])  # Nur den ersten Eintrag bei Einzelmodus
 
     with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
 
 def log_simulation_meta(entry):
-    filepath = "simulation_log.json"
+    filepath = "simulation_log_meta.json"
     try:
         with open(filepath, "r") as f:
             meta = json.load(f)
@@ -159,22 +159,3 @@ def log_simulation_meta(entry):
 
     with open(filepath, "w") as f:
         json.dump(meta, f, indent=2)
-
-def run_simulation():
-    results = []
-
-    # Simulationscode … füllt results
-
-    with open("simulation_log.json", "r") as f:
-        log = json.load(f)
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for r in results:
-        log.append({
-            "date": now,
-            "coin": r["coin"],
-            "verhalten": r["verhalten"]
-        })
-
-    with open("simulation_log.json", "w") as f:
-        json.dump(log, f, indent=2)
