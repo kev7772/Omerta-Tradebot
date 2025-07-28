@@ -78,3 +78,28 @@ def check_ghost_exit():
         json.dump(entries, f, indent=2)
 
     return updated
+
+def get_ghost_performance_ranking():
+    if not os.path.exists("ghost_log.json"):
+        return []
+
+    with open("ghost_log.json", "r") as f:
+        entries = json.load(f)
+
+    stats = {}
+    for e in entries:
+        coin = e["coin"]
+        if "success" not in e:
+            continue
+        if coin not in stats:
+            stats[coin] = {"count": 0, "sum": 0.0}
+        stats[coin]["count"] += 1
+        stats[coin]["sum"] += float(e["success"])
+
+    ranking = []
+    for coin, data in stats.items():
+        avg = data["sum"] / data["count"]
+        ranking.append({"coin": coin, "durchschnitt": round(avg, 2), "anzahl": data["count"]})
+
+    ranking.sort(key=lambda x: x["durchschnitt"], reverse=True)
+    return ranking
