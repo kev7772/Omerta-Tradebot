@@ -107,3 +107,21 @@ def run_scheduled_tasks():
     schedule.every(1).hours.do(run_ghost_mode)
     schedule.every(1).hours.do(check_ghost_exit)  # Exit-Logik aktiv
     ...
+
+def get_scheduler_status():
+    from datetime import datetime
+
+    status = "🗓️ *Omerta Scheduler Status:*\n\n"
+    status += "🧠 Aktive Hintergrundprozesse:\n"
+    status += "• Ghost Entry Check (1h)\n"
+    status += "• Ghost Exit Analyse (1h)\n"
+    status += "• Live Preis-Logger (1h)\n"
+    status += "• Hype/Trend-Analyse (1h)\n"
+    status += "• Feedback-Learning (6h)\n"
+    status += "• Historische Simulation (12h)\n"
+    status += "• Autostatus-Bericht (12:00 täglich)\n"
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    status += f"\n🕒 Stand: {now}"
+
+    return status
