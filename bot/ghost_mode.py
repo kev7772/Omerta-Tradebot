@@ -103,3 +103,32 @@ def get_ghost_performance_ranking():
 
     ranking.sort(key=lambda x: x["durchschnitt"], reverse=True)
     return ranking
+
+def run_ghost_analysis():
+    """
+    Führt eine Analyse über vergangene Ghost-Trades aus.
+    Optional kannst du hier Heatmaps, Erfolgsquoten oder Fehlermuster analysieren lassen.
+    """
+    try:
+        with open("ghost_log.json", "r") as f:
+            entries = json.load(f)
+
+        if not entries:
+            return "📭 Keine Einträge im Ghost-Log gefunden."
+
+        stats = {}
+        for entry in entries:
+            coin = entry.get("coin")
+            stats.setdefault(coin, 0)
+            stats[coin] += 1
+
+        result = "🧠 Ghost-Analyse abgeschlossen:\n\n"
+        for coin, count in stats.items():
+            result += f"• {coin}: {count} Trades\n"
+
+        return result
+
+    except FileNotFoundError:
+        return "⚠️ ghost_log.json nicht gefunden."
+    except Exception as e:
+        return f"❌ Fehler bei run_ghost_analysis: {str(e)}"
