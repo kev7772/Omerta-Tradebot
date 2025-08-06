@@ -70,7 +70,7 @@ def cmd_portfolio(message):
     if message.chat.id != ADMIN_ID:
         return
     holdings = get_portfolio()
-    text = "ð Dein Portfolio:
+    text = "📊 Dein Portfolio:\n"
 "
     for h in holdings:
         text += f"{h['coin']}: {h['amount']} â {h['value']} â¬
@@ -82,7 +82,7 @@ def cmd_profit(message):
     if message.chat.id != ADMIN_ID:
         return
     profits = get_profit_estimates()
-    text = "ð° Buchgewinne:
+    text = "💎° Buchgewinne:
 "
     for p in profits:
         text += f"{p['coin']}: {p['profit']} â¬ ({p['percent']}%)
