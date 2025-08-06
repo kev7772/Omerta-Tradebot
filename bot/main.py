@@ -337,6 +337,42 @@ def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
     bot.send_message(message.chat.id, "✅ Nachricht empfangen.")
 
+from telebot import TeleBot
+import os
+from trading import get_portfolio, get_profit_estimates
+from sentiment_parser import get_sentiment_data
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = TeleBot(BOT_TOKEN)
+
+@bot.message_handler(commands=["autostatus"])
+def handle_autostatus(message):
+    try:
+        # 📊 Portfolio anzeigen
+        portfolio = get_portfolio()
+        portfolio_msg = "📊 Portfolio:\n"
+        for h in portfolio:
+            coin = h.get("asset")
+            amount = float(h.get("free", 0)) + float(h.get("locked", 0))
+            if amount > 0:
+                portfolio_msg += f"• {coin}: {amount:.4f}\n"
+
+        # 📈 Profitschätzung
+        profit_data = get_profit_estimates()
+        profit_msg = "\n📈 Profit-Schätzung:\n"
+        for p in profit_data:
+            profit_msg += f"{p['coin']}: {p['percent']} %\n"
+
+        # 😊 Sentiment
+        sentiment = get_sentiment_data()
+        sentiment_msg = f"\n📢 Marktstimmung:\nGesamt: {sentiment['score']} — {sentiment['summary']}\n"
+
+        full_msg = portfolio_msg + profit_msg + sentiment_msg
+        bot.reply_to(message, full_msg)
+    
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Fehler bei /autostatus: {e}")
+
 # === Startup-Scheduler & Lernlogik aktivieren ===
 def startup_tasks():
     if not os.path.exists("history.json"):
