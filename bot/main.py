@@ -263,6 +263,17 @@ def handle_ghoststatus(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Fehler bei /ghoststatus: {e}")
 
+@bot.message_handler(commands=['ghostanalyze'])
+def handle_ghostanalyze(message):
+    if message.chat.id != ADMIN_ID:
+        return
+    try:
+        from ghost_mode import run_ghost_analysis
+        result = run_ghost_analysis()
+        bot.send_message(message.chat.id, result)
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Fehler bei /ghostanalyze:\n{e}")
+
 @bot.message_handler(commands=["ghostranking"])
 def handle_ghost_ranking(message):
     ranking = get_ghost_performance_ranking()
