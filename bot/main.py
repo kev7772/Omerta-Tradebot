@@ -371,11 +371,17 @@ def startup_tasks():
     if not os.path.exists("history.json"):
         with open("history.json", "w") as f:
             json.dump({}, f)
+
+    print("🕒 Schreibe initiale Preisdaten...")
+    write_history()
+
     print("📈 Starte Initial-Simulation...")
     run_simulation()
+
     print("🧠 Logge Entscheidungen...")
     decisions = make_trade_decision()
     log_trade_decisions(decisions)
+
     print("🛠️ Starte Feedback-Learning...")
     run_feedback_loop()
 
