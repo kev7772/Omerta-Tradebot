@@ -11,3 +11,5 @@ fpdf
 openpyxl
 numpy
 seaborn
+pytrends
+requests
