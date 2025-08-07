@@ -2,22 +2,48 @@ import json
 import os
 from datetime import datetime
 import random
+import requests
+from pytrends.request import TrendReq
 
-# Platzhalter für echte APIs (können später ersetzt werden)
+# === API KEYS ===
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+CMC_API_KEY = os.getenv("CMC_API_KEY")
+
+# === 1. Google Trends ===
 def fetch_google_trends():
-    return {
-        "bitcoin": random.randint(30, 100),
-        "crypto crash": random.randint(10, 90),
-        "shiba": random.randint(0, 80)
-    }
+    try:
+        pytrends = TrendReq(hl='de', tz=360)
+        pytrends.build_payload(["bitcoin", "crypto crash", "shiba"], cat=0, timeframe='now 1-d')
+        data = pytrends.interest_over_time()
+        return {
+            "bitcoin": int(data["bitcoin"].iloc[-1]),
+            "crypto crash": int(data["crypto crash"].iloc[-1]),
+            "shiba": int(data["shiba"].iloc[-1])
+        }
+    except Exception as e:
+        print(f"Fehler bei Google Trends: {e}")
+        return {
+            "bitcoin": random.randint(30, 100),
+            "crypto crash": random.randint(10, 90),
+            "shiba": random.randint(0, 80)
+        }
 
+# === 2. News Headlines ===
 def fetch_news_headlines():
-    return [
-        "Bitcoin ETF genehmigt in den USA",
-        "Altcoins im freien Fall",
-        "Ethereum Upgrade verzögert sich"
-    ]
+    try:
+        url = f"https://newsapi.org/v2/everything?q=crypto&language=de&apiKey={NEWS_API_KEY}"
+        response = requests.get(url)
+        articles = response.json().get("articles", [])
+        return [article["title"] for article in articles[:5]]
+    except Exception as e:
+        print(f"Fehler bei NewsAPI: {e}")
+        return [
+            "Bitcoin ETF genehmigt in den USA",
+            "Altcoins im freien Fall",
+            "Ethereum Upgrade verzögert sich"
+        ]
 
+# === 3. Twitter/X Mentions (Platzhalter) ===
 def fetch_twitter_mentions():
     return {
         "BTC": random.randint(2000, 8000),
@@ -25,41 +51,67 @@ def fetch_twitter_mentions():
         "SHIB": random.randint(500, 8000),
     }
 
+# === 4. CoinMarketCap Trends ===
 def fetch_coinmarketcap_trends():
-    return {
-        "top_gainer": "XRP",
-        "top_loser": "LUNA",
-        "dominance": {
-            "BTC": 48.3,
-            "ETH": 18.2
+    try:
+        headers = {
+            "X-CMC_PRO_API_KEY": CMC_API_KEY
         }
-    }
+        url = "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest"
+        response = requests.get(url, headers=headers)
+        data = response.json().get("data", {})
+        return {
+            "top_gainer": "XRP",  # Hier ggf. später erweitern
+            "top_loser": "LUNA",
+            "dominance": {
+                "BTC": round(data.get("btc_dominance", 0), 2),
+                "ETH": round(data.get("eth_dominance", 0), 2)
+            }
+        }
+    except Exception as e:
+        print(f"Fehler bei CoinMarketCap: {e}")
+        return {
+            "top_gainer": "XRP",
+            "top_loser": "LUNA",
+            "dominance": {
+                "BTC": round(random.uniform(45.0, 52.0), 2),
+                "ETH": round(random.uniform(15.0, 22.0), 2)
+            }
+        }
 
+# === 5. Pump Signals ===
 def fetch_pump_signals():
     return [
         {"coin": "PEPE", "suspicion": "Ungewöhnlicher Anstieg auf Telegram"},
         {"coin": "LUNA", "suspicion": "Social Hype trotz Kursverlust"}
     ]
 
-# Auswertung / Analyse
-def analyze_data(trends, twitter, news):
+# === Analyse ===
+def analyze_data(trends, twitter, news, cmc, suspicious):
     sentiment_score = 0
     detected_signals = []
 
-    if trends["bitcoin"] > 70:
+    if trends.get("bitcoin", 0) > 70:
         sentiment_score += 1
         detected_signals.append("🔼 Hohes Bitcoin-Suchvolumen")
 
-    if trends["crypto crash"] > 60:
+    if trends.get("crypto crash", 0) > 60:
         sentiment_score -= 2
         detected_signals.append("⚠️ Crash-Themen im Trend")
 
-    if "Altcoins im freien Fall" in news:
+    if any("Altcoins im freien Fall" in headline for headline in news):
         sentiment_score -= 1
         detected_signals.append("📉 Schlechte Altcoin-News")
 
     if twitter.get("DOGE", 0) > 9000:
+        sentiment_score += 1
         detected_signals.append("🐶 DOGE könnte gehypt werden")
+
+    if cmc["dominance"]["BTC"] > 50:
+        detected_signals.append(f"🔗 BTC-Dominanz steigt auf {cmc['dominance']['BTC']}%")
+
+    for signal in suspicious:
+        detected_signals.append(f"🚨 Pump-Verdacht bei {signal['coin']}: {signal['suspicion']}")
 
     if sentiment_score >= 2:
         overall_sentiment = "bullish"
@@ -74,7 +126,7 @@ def analyze_data(trends, twitter, news):
         "signals": detected_signals
     }
 
-# Hauptfunktion
+# === Hauptfunktion ===
 def run_crawler():
     print("📡 Starte Daten-Crawler...")
 
@@ -84,7 +136,7 @@ def run_crawler():
     cmc = fetch_coinmarketcap_trends()
     suspicious = fetch_pump_signals()
 
-    analysis = analyze_data(trends, twitter, news)
+    analysis = analyze_data(trends, twitter, news, cmc, suspicious)
 
     full_data = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -103,10 +155,11 @@ def run_crawler():
     except Exception as e:
         print(f"❌ Fehler beim Speichern: {e}")
 
+# === Daten lesen ===
 def get_crawler_data():
     try:
         with open("crawler_data.json", "r") as f:
             return json.load(f)
     except Exception as e:
-        print(f"[GhostMode] Fehler beim Laden der crawler_data.json: {e}")
+        print(f"[Crawler] Fehler beim Laden: {e}")
         return {}
