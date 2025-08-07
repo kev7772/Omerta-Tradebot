@@ -321,6 +321,49 @@ def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
     bot.send_message(message.chat.id, "✅ Nachricht empfangen.")
 
+@bot.message_handler(commands=['commands'])
+def handle_commands(message):
+    commands_list = """
+📜 *OmertaTradeBot – Befehlsübersicht*:
+
+🔹 /start – Bot starten
+🔹 /status – Bot-Status anzeigen
+🔹 /autostatus – Aktive Automatisierungen anzeigen
+🔹 /schedulerstatus – Aktive Scheduler-Tasks anzeigen
+
+📈 *Trading & Analyse*
+🔹 /portfolio – Aktuelles Portfolio anzeigen
+🔹 /profit – Gewinn-/Verlustübersicht anzeigen
+🔹 /indicators – Technische Indikatoren (RSI, MACD, EMA, Bollinger)
+🔹 /forecast – Marktprognose (Beta)
+🔹 /recommend – Trading-Empfehlungen anzeigen
+
+🧠 *Lernen & Bewertung*
+🔹 /learninglog – Lernverlauf anzeigen
+🔹 /forcelearn – Testeintrag ins Lernmodul erzeugen
+🔹 /heatmap – Fehleranalyse als Heatmap anzeigen
+
+📊 *Simulation & Ghost Modus*
+🔹 /simulate – Standard-Simulation starten
+🔹 /livesim – Live-Simulation starten
+🔹 /simstatus – Simulations-Status anzeigen
+🔹 /ghostmode – Ghost Modus aktivieren
+🔹 /ghoststatus – Ghost-Trades Status anzeigen
+
+📡 *Daten & Sentiment*
+🔹 /sentiment – Marktstimmung anzeigen
+🔹 /crawlerstatus – Letzte Crawler-Ergebnisse anzeigen
+
+🛑 *Sicherheit*
+🔹 /panic – Panik-Modus prüfen & auslösen
+
+💡 *Weitere Tools*
+🔹 /change <Datum> – Kursveränderung seit bestimmtem Tag anzeigen
+🔹 /commands – Diese Übersicht anzeigen
+
+"""
+    bot.send_message(message.chat.id, commands_list, parse_mode='Markdown')
+
 # === Startup Tasks ===
 def startup_tasks():
     if not os.path.exists("history.json"):
