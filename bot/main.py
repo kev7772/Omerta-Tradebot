@@ -323,6 +323,25 @@ def debug_echo(message):
     print(f"📥 Nachricht empfangen von {message.chat.id}: {message.text}")
     bot.send_message(message.chat.id, "✅ Nachricht empfangen.")
 
+@bot.message_handler(commands=['forcelearn'])
+def handle_forcelearn(message):
+    try:
+        test_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "coin": "TEST",
+            "entry_price": 100,
+            "exit_price": 110,
+            "result": "+10%"
+        }
+        with open("learning_log.json", "r") as f:
+            data = json.load(f)
+        data.append(test_entry)
+        with open("learning_log.json", "w") as f:
+            json.dump(data, f, indent=2)
+        bot.send_message(message.chat.id, "✅ Testeintrag ins Lernlog geschrieben.")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"⚠️ Fehler bei /forcelearn: {e}")
+
 @bot.message_handler(commands=['commands'])
 def handle_commands(message):
     commands_list = """
