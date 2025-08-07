@@ -2,6 +2,8 @@ import os
 import json
 import threading
 import telebot
+import threading
+from scheduler import run_scheduler
 from flask import Flask, request
 from live_logger import write_history
 from simulator import run_simulation, run_live_simulation
