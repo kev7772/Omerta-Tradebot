@@ -1,10 +1,3 @@
-from trading import get_current_prices
-import json
-from datetime import datetime
-import os
-
-HISTORY_FILE = "history.json"
-
 from datetime import datetime
 from binance.client import Client
 import os
