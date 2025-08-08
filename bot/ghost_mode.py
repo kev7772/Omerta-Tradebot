@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from sentiment_parser import get_sentiment_data
 from trading import get_profit_estimates
@@ -11,14 +12,24 @@ def detect_stealth_entry(profit_data, sentiment_data, crawler_data):
     for p in profit_data:
         coin = p["coin"]
         percent = p["percent"]
+        
+        # Sentiment
         sentiment = sentiment_data.get(coin, {})
-        mentions = crawler_data.get(coin, {}).get("mentions", 0)
-        trend_score = crawler_data.get(coin, {}).get("trend_score", 0)
+        sentiment_score = sentiment.get("score", 0)
+
+        # Mentions + Trend Score aus crawler_data (Liste!)
+        mentions = 0
+        trend_score = 0
+        for entry in crawler_data:
+            if entry.get("coin") == coin:
+                mentions = entry.get("mentions", 0)
+                trend_score = entry.get("trend_score", 0)
+                break
 
         if (
             percent < 2 and
             mentions < 50 and
-            sentiment.get("score", 0) > 0.6 and
+            sentiment_score > 0.6 and
             trend_score > 0.4
         ):
             entries.append({
@@ -48,15 +59,11 @@ def run_ghost_mode():
 
     return new_entries
 
-from datetime import datetime
-import json
-import os
-
 def check_ghost_exit():
-    if not os.path.exists("ghost_log.json"):
+    if not os.path.exists(GHOST_LOG_PATH):
         return []
 
-    with open("ghost_log.json", "r") as f:
+    with open(GHOST_LOG_PATH, "r") as f:
         entries = json.load(f)
 
     updated = []
@@ -74,16 +81,16 @@ def check_ghost_exit():
             updated.append(entry)
 
     # Log aktualisieren
-    with open("ghost_log.json", "w") as f:
+    with open(GHOST_LOG_PATH, "w") as f:
         json.dump(entries, f, indent=2)
 
     return updated
 
 def get_ghost_performance_ranking():
-    if not os.path.exists("ghost_log.json"):
+    if not os.path.exists(GHOST_LOG_PATH):
         return []
 
-    with open("ghost_log.json", "r") as f:
+    with open(GHOST_LOG_PATH, "r") as f:
         entries = json.load(f)
 
     stats = {}
@@ -105,12 +112,8 @@ def get_ghost_performance_ranking():
     return ranking
 
 def run_ghost_analysis():
-    """
-    Führt eine Analyse über vergangene Ghost-Trades aus.
-    Optional kannst du hier Heatmaps, Erfolgsquoten oder Fehlermuster analysieren lassen.
-    """
     try:
-        with open("ghost_log.json", "r") as f:
+        with open(GHOST_LOG_PATH, "r") as f:
             entries = json.load(f)
 
         if not entries:
