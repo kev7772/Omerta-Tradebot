@@ -5,20 +5,43 @@ import os
 
 HISTORY_FILE = "history.json"
 
+from datetime import datetime
+from binance.client import Client
+import os
+import json
+
+API_KEY = os.getenv("BINANCE_API_KEY")
+API_SECRET = os.getenv("BINANCE_API_SECRET")
+client = Client(API_KEY, API_SECRET)
+
+HISTORY_FILE = "history.json"
+
 def write_history():
-    prices = get_current_prices()
-    if not prices:
-        print("⚠️ Keine aktuellen Preise gefunden.")
-        return
-
-    now = datetime.utcnow().strftime("%Y-%m-%d")
-
     try:
+        prices = client.get_all_tickers()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        history_entry = {"timestamp": timestamp, "prices": {}}
+
+        for p in prices:
+            symbol = p["symbol"]
+            price = p["price"]
+            history_entry["prices"][symbol] = price
+
         if os.path.exists(HISTORY_FILE):
             with open(HISTORY_FILE, "r") as f:
                 data = json.load(f)
         else:
-            data = {}
+            data = []
+
+        data.append(history_entry)
+
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"[Logger] Preise gespeichert um {timestamp}")
+
+    except Exception as e:
+        print(f"[Logger] Fehler beim Speichern der Preise: {e}")
 
         # Speichere nur relevante USDT-Paare
         filtered = {symbol: price for symbol, price in prices.items() if symbol.endswith("USDT")}
