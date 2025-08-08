@@ -22,7 +22,7 @@ from crawler_alert import detect_hype_signals
 from ghost_mode import run_ghost_mode, check_ghost_exit
 
 # === Sicherstellen, dass JSON-Dateien existieren ===
-for file in ["crawler_data.json", "learning_log.json"]:
+for file in ["crawler_data.json", "learning_log.json", "history.json"]:
     if not os.path.exists(file):
         with open(file, "w") as f:
             json.dump([], f)
@@ -71,10 +71,23 @@ def send_autostatus():
 # === Ghost Mode Zeitsteuerung ===
 def ghost_schedule():
     entries = run_ghost_mode()
-    if entries:
-        print(f"[GhostMode] {len(entries)} Ghost Entries erkannt.")
-    else:
-        print("[GhostMode] Keine Einträge.")
+    print(f"[GhostMode] {len(entries)} Ghost Entries erkannt." if entries else "[GhostMode] Keine Einträge erkannt.")
+
+# === Preislogger mit Logging ===
+def log_prices_task():
+    try:
+        write_history()
+        print(f"[Logger] Preise gespeichert um {datetime.now()}")
+    except Exception as e:
+        print(f"[Logger] Fehler beim Speichern der Preise: {e}")
+
+# === Simulation mit Logging ===
+def simulation_task():
+    try:
+        run_simulation()
+        print(f"[Simulation] Historische Simulation abgeschlossen um {datetime.now()}")
+    except Exception as e:
+        print(f"[Simulation] Fehler bei der Simulation: {e}")
 
 # === Hype Check ===
 def hype_check():
@@ -92,11 +105,11 @@ def hype_check():
 def run_scheduled_tasks():
     schedule.every(1).hours.do(run_ghost_mode)
     schedule.every(1).hours.do(check_ghost_exit)
-    schedule.every(1).hours.do(write_history)
+    schedule.every(1).hours.do(log_prices_task)
     schedule.every(1).hours.do(run_crawler)
     schedule.every(1).hours.do(hype_check)
     schedule.every(6).hours.do(run_feedback_loop)
-    schedule.every(12).hours.do(run_simulation)
+    schedule.every(1).hours.do(simulation_task)  # statt 12h → jede Stunde für permanenten Lernmodus
     schedule.every().day.at("12:00").do(send_autostatus)
 
 # === Scheduler dauerhaft starten ===
@@ -118,7 +131,7 @@ def get_scheduler_status():
     status += "• Markt-Crawler (1h)\n"
     status += "• Hype/Trend-Analyse (1h)\n"
     status += "• Feedback-Learning (6h)\n"
-    status += "• Historische Simulation (12h)\n"
+    status += "• Historische Simulation (1h)\n"
     status += "• Autostatus-Bericht (12:00 täglich)\n"
     status += f"\n🕒 Stand: {now}"
     return status
