@@ -80,10 +80,37 @@ def log_history():
 # === Profit-Schätzung ===
 def get_profit_estimates():
     try:
-        with open(HISTORY_FILE, "r") as f:
+        with open("history.json", "r") as f:
             history = json.load(f)
+
+        if not history:
+            return []
+
+        last_entry = history[-1]
+        prices = last_entry["prices"]
+
+        # Hier kommt deine Portfolio-Logik rein (z. B. vergleichen mit Einstandskurs etc.)
+        portfolio = get_portfolio()
+        estimates = []
+
+        for asset in portfolio:
+            coin = asset['coin']
+            amount = float(asset['amount'])
+            if amount > 0:
+                price = float(prices.get(coin + "USDT", 0))
+                estimates.append({
+                    "coin": coin,
+                    "amount": amount,
+                    "value": price * amount,
+                    "price": price,
+                    "profit": 0,  # z. B. berechnet mit Einstandskurs
+                    "percent": 0
+                })
+
+        return estimates
+
     except Exception as e:
-        print(f"Fehler beim Laden der history.json: {e}")
+        print(f"[ProfitEstimate] Fehler: {e}")
         return []
 
     if not history:
