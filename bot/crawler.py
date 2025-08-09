@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 import random
 import requests
+from crawler import run_crawler, get_crawler_data  # oben sicherstellen
 from pytrends.request import TrendReq
 
 # === API KEYS ===
@@ -144,37 +145,18 @@ def build_coin_list(twitter, trends):
     return coins
 
 # === Hauptfunktion ===
-def run_crawler():
-    print("📡 Starte Daten-Crawler...")
-
-    trends = fetch_google_trends()
-    news = fetch_news_headlines()
-    twitter = fetch_twitter_mentions()
-    cmc = fetch_coinmarketcap_trends()
-    suspicious = fetch_pump_signals()
-
-    analysis = analyze_data(trends, twitter, news, cmc, suspicious)
-    coins_list = build_coin_list(twitter, trends)
-
-    full_data = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "raw": {
-            "trends": trends,
-            "news": news,
-            "twitter": twitter,
-            "coinmarketcap": cmc,
-            "pump_signals": suspicious,
-            "analysis": analysis
-        },
-        "coins": coins_list
-    }
-
-    try:
-        with open("crawler_data.json", "w") as f:
-            json.dump(full_data, f, indent=2)
-        print("✅ Crawler-Daten erfolgreich gespeichert.")
-    except Exception as e:
-        print(f"❌ Fehler beim Speichern: {e}")
+def crawler_job():
+    _job("Crawler", run_crawler)
+    data = get_crawler_data()
+    if not data:
+        return
+    coins = data.get("coins", [])
+    if coins:
+        top = sorted(coins, key=lambda x: x.get("mentions",0), reverse=True)[:3]
+        msg = f"📡 Crawler Update — Top Trends:\n"
+        for c in top:
+            msg += f"• {c.get('coin')} — Mentions: {c.get('mentions')} | Trend: {c.get('trend_score')}\n"
+        _send(msg)
 
 # === Daten lesen ===
 def get_crawler_data():
