@@ -145,7 +145,7 @@ def run_scheduled_tasks():
     schedule.every(1).hours.do(run_ghost_mode)
     schedule.every(1).hours.do(check_ghost_exit)
     schedule.every(1).hours.do(log_prices_task)
-    schedule.every(1).hours.do(run_crawler)
+    schedule.every(1).hours.do(crawler_job)
     schedule.every(1).hours.do(hype_check)
     schedule.every(6).hours.do(run_feedback_loop)
     schedule.every(1).hours.do(simulation_task)
