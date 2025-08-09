@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 import random
 import requests
-from crawler import run_crawler, get_crawler_data  # oben sicherstellen
 from pytrends.request import TrendReq
 
 # === API KEYS ===
