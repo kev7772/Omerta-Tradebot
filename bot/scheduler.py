@@ -3,6 +3,7 @@ import time
 import os
 from telebot import TeleBot
 from datetime import datetime
+from learn_scheduler import evaluate_pending_learnings
 
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -74,8 +75,50 @@ def run_scheduler():
     # ✅ NEU: 1× pro Tag → Ausstehende Lernbewertungen prüfen
     schedule.every().day.at("14:00").do(evaluate_pending_learnings)
 
+    schedule.every(1).hours.do(learn_job)
+
     print("✅ Scheduler gestartet und alle Tasks geladen.")
 
     while True:
         schedule.run_pending()
         time.sleep(1)
+
+# Lernzahlen (optional)
+try:
+    open_cnt = 0
+    learned_cnt = 0
+    if os.path.exists("decision_log.json"):
+        with open("decision_log.json", "r", encoding="utf-8") as f:
+            open_cnt = len(json.load(f))
+    if os.path.exists("learning_log.json"):
+        with open("learning_log.json", "r", encoding="utf-8") as f:
+            learned_cnt = len(json.load(f))
+    _send(f"🧠 Auto-Learning: {learned_cnt} gelernt | {open_cnt} offen")
+except Exception:
+    pass
+
+def learn_job():
+    """Bewertet ausstehende Entscheidungen und meldet, wie viele verarbeitet wurden."""
+    # Vorher zählen
+    before = 0
+    try:
+        if os.path.exists("decision_log.json"):
+            with open("decision_log.json", "r", encoding="utf-8") as f:
+                before = len(json.load(f))
+    except Exception:
+        pass
+
+    _job("AutoLearn", evaluate_pending_learnings)
+
+    # Nachher zählen
+    after = 0
+    try:
+        if os.path.exists("decision_log.json"):
+            with open("decision_log.json", "r", encoding="utf-8") as f:
+                after = len(json.load(f))
+    except Exception:
+        pass
+
+    processed = max(0, before - after)
+    if processed > 0:
+        _send(f"🧠 Auto-Learn: {processed} Entscheidung(en) bewertet.")
