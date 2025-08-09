@@ -2,7 +2,7 @@ import os
 import json
 import threading
 import telebot
-from crawler import get_crawler_data  # GANZ OBEN sicherstellen
+from crawler import run_crawler, get_crawler_data
 from flask import Flask, request
 from datetime import datetime
 from scheduler import run_scheduler, get_scheduler_status
