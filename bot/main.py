@@ -2,6 +2,7 @@ import os
 import json
 import threading
 import telebot
+from crawler import get_crawler_data  # GANZ OBEN sicherstellen
 from flask import Flask, request
 from datetime import datetime
 from scheduler import run_scheduler, get_scheduler_status
@@ -137,6 +138,35 @@ def cmd_sentiment(message):
     if sources:
         text += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sources])
     safe_send(message.chat.id, text)
+
+@bot.message_handler(commands=['crawlerstatus'])
+def cmd_crawlerstatus(message):
+    if not is_admin(message):
+        return
+    data = get_crawler_data()
+    if not data:
+        safe_send(message.chat.id, "📭 Keine Crawler-Daten vorhanden.")
+        return
+
+    ts = data.get("timestamp", "unbekannt")
+    coins = data.get("coins", [])
+    analysis = data.get("raw", {}).get("analysis", {})
+
+    msg = f"📡 *Crawler Status*\n⏱ Letzter Lauf: {ts}\n"
+    msg += f"📊 Sentiment: {analysis.get('sentiment','?')} (Score: {analysis.get('score',0)})\n\n"
+
+    if coins:
+        msg += "💠 Top Coins nach Trend:\n"
+        for c in coins:
+            msg += f"• {c.get('coin')} — Mentions: {c.get('mentions')} | Trend: {c.get('trend_score')}\n"
+    else:
+        msg += "Keine Coin-Trends gefunden."
+
+    signals = analysis.get("signals", [])
+    if signals:
+        msg += "\n🚨 Signale:\n" + "\n".join(signals)
+
+    safe_send(message.chat.id, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['indicators'])
 def cmd_indicators(message):
