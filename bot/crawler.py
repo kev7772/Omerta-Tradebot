@@ -21,7 +21,7 @@ def fetch_google_trends():
             "shiba": int(data["shiba"].iloc[-1])
         }
     except Exception as e:
-        print(f"Fehler bei Google Trends: {e}")
+        print(f"[Crawler] Fehler bei Google Trends: {e}")
         return {
             "bitcoin": random.randint(30, 100),
             "crypto crash": random.randint(10, 90),
@@ -32,11 +32,11 @@ def fetch_google_trends():
 def fetch_news_headlines():
     try:
         url = f"https://newsapi.org/v2/everything?q=crypto&language=de&apiKey={NEWS_API_KEY}"
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         articles = response.json().get("articles", [])
-        return [article["title"] for article in articles[:5]]
+        return [article.get("title", "Unbekannter Titel") for article in articles[:5]]
     except Exception as e:
-        print(f"Fehler bei NewsAPI: {e}")
+        print(f"[Crawler] Fehler bei NewsAPI: {e}")
         return [
             "Bitcoin ETF genehmigt in den USA",
             "Altcoins im freien Fall",
@@ -45,6 +45,7 @@ def fetch_news_headlines():
 
 # === 3. Twitter/X Mentions (Platzhalter) ===
 def fetch_twitter_mentions():
+    # TODO: Echte API-Anbindung
     return {
         "BTC": random.randint(2000, 8000),
         "DOGE": random.randint(1000, 10000),
@@ -54,14 +55,12 @@ def fetch_twitter_mentions():
 # === 4. CoinMarketCap Trends ===
 def fetch_coinmarketcap_trends():
     try:
-        headers = {
-            "X-CMC_PRO_API_KEY": CMC_API_KEY
-        }
+        headers = {"X-CMC_PRO_API_KEY": CMC_API_KEY}
         url = "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest"
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         data = response.json().get("data", {})
         return {
-            "top_gainer": "XRP",  # Hier ggf. später erweitern
+            "top_gainer": "XRP",  # TODO: Später dynamisch ermitteln
             "top_loser": "LUNA",
             "dominance": {
                 "BTC": round(data.get("btc_dominance", 0), 2),
@@ -69,7 +68,7 @@ def fetch_coinmarketcap_trends():
             }
         }
     except Exception as e:
-        print(f"Fehler bei CoinMarketCap: {e}")
+        print(f"[Crawler] Fehler bei CoinMarketCap: {e}")
         return {
             "top_gainer": "XRP",
             "top_loser": "LUNA",
@@ -107,7 +106,7 @@ def analyze_data(trends, twitter, news, cmc, suspicious):
         sentiment_score += 1
         detected_signals.append("🐶 DOGE könnte gehypt werden")
 
-    if cmc["dominance"]["BTC"] > 50:
+    if cmc.get("dominance", {}).get("BTC", 0) > 50:
         detected_signals.append(f"🔗 BTC-Dominanz steigt auf {cmc['dominance']['BTC']}%")
 
     for signal in suspicious:
@@ -126,6 +125,24 @@ def analyze_data(trends, twitter, news, cmc, suspicious):
         "signals": detected_signals
     }
 
+# === Coin-Format für Ghost-Mode ===
+def build_coin_list(twitter, trends):
+    coins = []
+    mapping = {
+        "BTC": "bitcoin",
+        "DOGE": "doge",
+        "SHIB": "shiba"
+    }
+    for symbol, trend_key in mapping.items():
+        mentions = twitter.get(symbol, 0)
+        trend_val = trends.get(trend_key, 0)
+        coins.append({
+            "coin": symbol,
+            "mentions": mentions,
+            "trend_score": round(trend_val / 100, 3)  # 0..1 normalisiert
+        })
+    return coins
+
 # === Hauptfunktion ===
 def run_crawler():
     print("📡 Starte Daten-Crawler...")
@@ -137,21 +154,25 @@ def run_crawler():
     suspicious = fetch_pump_signals()
 
     analysis = analyze_data(trends, twitter, news, cmc, suspicious)
+    coins_list = build_coin_list(twitter, trends)
 
     full_data = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "trends": trends,
-        "news": news,
-        "twitter": twitter,
-        "coinmarketcap": cmc,
-        "pump_signals": suspicious,
-        "analysis": analysis
+        "raw": {
+            "trends": trends,
+            "news": news,
+            "twitter": twitter,
+            "coinmarketcap": cmc,
+            "pump_signals": suspicious,
+            "analysis": analysis
+        },
+        "coins": coins_list
     }
 
     try:
         with open("crawler_data.json", "w") as f:
             json.dump(full_data, f, indent=2)
-        print("✅ Daten erfolgreich gespeichert.")
+        print("✅ Crawler-Daten erfolgreich gespeichert.")
     except Exception as e:
         print(f"❌ Fehler beim Speichern: {e}")
 
