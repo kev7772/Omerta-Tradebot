@@ -14,16 +14,21 @@ from binance.client import Client
 from trading import get_portfolio, get_profit_estimates
 from decision_logger import log_trade_decisions
 from feedback_loop import run_feedback_loop
-from forecast import forecast_market
 from visualize_learning import generate_heatmap
 from ghost_mode import run_ghost_mode, run_ghost_analysis, check_ghost_exit, get_ghost_performance_ranking
 
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_ID = os.getenv("ADMIN_ID", "").strip()
+
+if not BOT_TOKEN or not ADMIN_ID.isdigit():
+    raise RuntimeError("❌ BOT_TOKEN oder ADMIN_ID nicht korrekt gesetzt!")
+
+ADMIN_ID = int(ADMIN_ID)
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
+# === Flask Webhook ===
 @app.route('/')
 def index():
     return 'OmertaTradeBot Webhook aktiv'
@@ -36,86 +41,106 @@ def webhook():
         return '', 200
     return '', 403
 
+# === Helper ===
+def is_admin(message):
+    return message.chat.id == ADMIN_ID
+
+def safe_send(chat_id, text, **kwargs):
+    try:
+        bot.send_message(chat_id, text, **kwargs)
+    except Exception as e:
+        print(f"[Telegram] Fehler: {e}")
+
+# === Commands ===
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
-    bot.send_message(message.chat.id, "👋 Willkommen beim OmertaTradeBot!")
+    safe_send(message.chat.id, "👋 Willkommen beim OmertaTradeBot!")
 
 @bot.message_handler(commands=['status'])
 def cmd_status(message):
-    if message.chat.id == ADMIN_ID:
-        bot.send_message(message.chat.id, "✅ Bot läuft einwandfrei.")
+    if not is_admin(message):
+        return
+    safe_send(message.chat.id, "✅ Bot läuft einwandfrei.")
 
 @bot.message_handler(commands=['portfolio'])
 def cmd_portfolio(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    holdings = get_portfolio()
+    holdings = get_portfolio() or []
+    if not holdings:
+        safe_send(message.chat.id, "📭 Kein Portfolio gefunden.")
+        return
     msg = "📊 Dein Portfolio:\n"
     for h in holdings:
-        msg += f"{h['coin']}: {h['amount']} → {h['value']} €\n"
-    bot.send_message(message.chat.id, msg)
+        msg += f"{h.get('coin','?')}: {h.get('amount',0)} → {h.get('value',0)} €\n"
+    safe_send(message.chat.id, msg)
 
 @bot.message_handler(commands=['profit'])
 def cmd_profit(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    profits = get_profit_estimates()
+    profits = get_profit_estimates() or []
+    if not profits:
+        safe_send(message.chat.id, "📭 Keine Gewinn-/Verlustdaten gefunden.")
+        return
     msg = "💰 Buchgewinne:\n"
     for p in profits:
-        msg += f"{p['coin']}: {p['profit']} € ({p['percent']}%)\n"
-    bot.send_message(message.chat.id, msg)
+        msg += f"{p.get('coin','?')}: {p.get('profit',0)} € ({p.get('percent',0)}%)\n"
+    safe_send(message.chat.id, msg)
 
 @bot.message_handler(commands=['simulate'])
 def cmd_simulate(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     run_simulation()
-    bot.send_message(message.chat.id, "🧪 Simulation abgeschlossen.")
+    safe_send(message.chat.id, "🧪 Simulation abgeschlossen.")
 
 @bot.message_handler(commands=['livesim'])
 def cmd_livesim(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     result = run_live_simulation()
-    bot.send_message(message.chat.id, result)
+    safe_send(message.chat.id, result or "📭 Keine Daten für Live-Simulation.")
 
 @bot.message_handler(commands=['recommend'])
 def cmd_recommend(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    trades = recommend_trades()
-    msg = "📌 Empfehlungen:\n" + "\n".join(trades)
-    bot.send_message(message.chat.id, msg)
+    trades = recommend_trades() or []
+    msg = "📌 Empfehlungen:\n" + "\n".join(trades) if trades else "📭 Keine Empfehlungen."
+    safe_send(message.chat.id, msg)
 
 @bot.message_handler(commands=['tradelogic'])
 def cmd_tradelogic(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    logic = make_trade_decision()
-    bot.send_message(message.chat.id, "🧠 Entscheidung:\n" + "\n".join(logic))
+    logic = make_trade_decision() or []
+    safe_send(message.chat.id, "🧠 Entscheidung:\n" + "\n".join(logic))
 
 @bot.message_handler(commands=['panic'])
 def cmd_panic(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     panic, coin = should_trigger_panic()
     if panic:
-        bot.send_message(message.chat.id, f"🚨 Notbremse bei {coin} empfohlen (über -25%)!")
+        safe_send(message.chat.id, f"🚨 Notbremse bei {coin} empfohlen (über -25%)!")
     else:
-        bot.send_message(message.chat.id, "✅ Keine Notbremse notwendig.")
+        safe_send(message.chat.id, "✅ Keine Notbremse notwendig.")
 
 @bot.message_handler(commands=['sentiment'])
 def cmd_sentiment(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    sentiment = get_sentiment_data()
-    text = f"📊 Marktstimmung: {sentiment['sentiment'].upper()} ({sentiment['score']})\n"
-    text += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sentiment["sources"]])
-    bot.send_message(message.chat.id, text)
+    sentiment = get_sentiment_data() or {}
+    text = f"📊 Marktstimmung: {str(sentiment.get('sentiment','')).upper()} ({sentiment.get('score',0)})\n"
+    sources = sentiment.get("sources", [])
+    if sources:
+        text += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sources])
+    safe_send(message.chat.id, text)
 
 @bot.message_handler(commands=['indicators'])
 def cmd_indicators(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     try:
         client = Client(os.getenv("BINANCE_API_KEY"), os.getenv("BINANCE_API_SECRET"))
@@ -124,122 +149,115 @@ def cmd_indicators(message):
         df = pd.DataFrame(klines, columns=[
             "timestamp", "open", "high", "low", "close", "volume",
             "close_time", "quote_asset_volume", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
-        ])
-        df = df.astype(float)
+        ]).astype(float)
         result = calculate_indicators(df)
-        msg = f"📈 Technische Analyse BTCUSDT\n"
-        msg += f"RSI: {result['rsi']:.2f}\n"
-        msg += f"MACD: {result['macd']:.4f} | Signal: {result['macd_signal']:.4f}\n"
-        msg += f"EMA20: {result['ema20']:.2f} | EMA50: {result['ema50']:.2f}\n"
-        msg += f"Bollinger%: {result['bb_percent']:.2f}"
-        bot.send_message(message.chat.id, msg)
+        msg = (
+            f"📈 Technische Analyse BTCUSDT\n"
+            f"RSI: {result.get('rsi',0):.2f}\n"
+            f"MACD: {result.get('macd',0):.4f} | Signal: {result.get('macd_signal',0):.4f}\n"
+            f"EMA20: {result.get('ema20',0):.2f} | EMA50: {result.get('ema50',0):.2f}\n"
+            f"Bollinger%: {result.get('bb_percent',0):.2f}"
+        )
+        safe_send(message.chat.id, msg)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Fehler bei /indicators: {e}")
+        safe_send(message.chat.id, f"❌ Fehler bei /indicators: {e}")
 
 @bot.message_handler(commands=['heatmap'])
 def cmd_heatmap(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    path = generate_heatmap()
-    with open(path, "rb") as f:
-        bot.send_photo(message.chat.id, f, caption="📊 Heatmap der Lernbewertung")
+    try:
+        path = generate_heatmap()
+        with open(path, "rb") as f:
+            bot.send_photo(message.chat.id, f, caption="📊 Heatmap der Lernbewertung")
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /heatmap: {e}")
 
 @bot.message_handler(commands=['learninglog'])
 def cmd_learninglog(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     log = get_learning_log()
-    bot.send_message(message.chat.id, log)
+    safe_send(message.chat.id, log or "📭 Kein Lernlog gefunden.")
 
 @bot.message_handler(commands=['forcelearn'])
 def cmd_forcelearn(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    results = run_feedback_loop()
+    results = run_feedback_loop() or []
     if results:
         msg = "📈 Lernbewertung:\n"
         for r in results:
-            emoji = "✅" if r['success'] > 0 else "❌"
-            msg += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
-        bot.send_message(message.chat.id, msg)
+            emoji = "✅" if r.get('success',0) > 0 else "❌"
+            msg += f"{emoji} {r.get('coin')} ({r.get('date')}) → {r.get('success')} %\n"
+        safe_send(message.chat.id, msg)
     else:
-        bot.send_message(message.chat.id, "Keine offenen Lernbewertungen gefunden.")
+        safe_send(message.chat.id, "Keine offenen Lernbewertungen gefunden.")
 
 @bot.message_handler(commands=['ghostmode'])
 def cmd_ghostmode(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    bot.send_message(message.chat.id, "🧙 Ghost-Modus aktiviert.")
-    entries = run_ghost_mode()
+    entries = run_ghost_mode() or []
     if entries:
-        msg = "⚔️ Neue Ghost Entries:\n\n"
-        for e in entries:
-            msg += f"• {e['coin']}: {e['reason']}\n"
-        bot.send_message(message.chat.id, msg)
+        msg = "⚔️ Neue Ghost Entries:\n\n" + "\n".join([f"• {e.get('coin')}: {e.get('reason')}" for e in entries])
     else:
-        bot.send_message(message.chat.id, "Keine Ghost Entries gefunden.")
+        msg = "Keine Ghost Entries gefunden."
+    safe_send(message.chat.id, msg)
 
 @bot.message_handler(commands=['ghoststatus'])
 def cmd_ghoststatus(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    exits = check_ghost_exit()
+    exits = check_ghost_exit() or []
     if exits:
-        msg = "🚪 Ghost Exits erkannt:\n\n"
-        for e in exits:
-            msg += f"• {e['coin']}: {e['success']} % (Exit: {e['exit_time']})\n"
-        bot.send_message(message.chat.id, msg)
+        msg = "🚪 Ghost Exits erkannt:\n\n" + "\n".join([f"• {e.get('coin')}: {e.get('success')} % (Exit: {e.get('exit_time')})" for e in exits])
     else:
-        bot.send_message(message.chat.id, "🧘 Keine aktiven Ghost Exits.")
+        msg = "🧘 Keine aktiven Ghost Exits."
+    safe_send(message.chat.id, msg)
 
 @bot.message_handler(commands=['ghostranking'])
 def cmd_ghostranking(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    ranking = get_ghost_performance_ranking()
+    ranking = get_ghost_performance_ranking() or []
     if ranking:
-        msg = "👑 *Top Ghost-Träger:*\n\n"
-        for r in ranking[:10]:
-            msg += f"• {r['coin']}: {r['durchschnitt']} % über {r['anzahl']} Trades\n"
-        bot.send_message(message.chat.id, msg, parse_mode="Markdown")
+        msg = "👑 *Top Ghost-Träger:*\n\n" + "\n".join([f"• {r.get('coin')}: {r.get('durchschnitt')} % über {r.get('anzahl')} Trades" for r in ranking[:10]])
+        safe_send(message.chat.id, msg, parse_mode="Markdown")
     else:
-        bot.send_message(message.chat.id, "Keine abgeschlossenen Ghost-Trades.")
+        safe_send(message.chat.id, "Keine abgeschlossenen Ghost-Trades.")
 
 @bot.message_handler(commands=['schedulerstatus'])
 def cmd_schedulerstatus(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     status = get_scheduler_status()
-    bot.send_message(message.chat.id, status, parse_mode="Markdown")
+    safe_send(message.chat.id, status, parse_mode="Markdown")
 
 @bot.message_handler(commands=['autostatus'])
 def cmd_autostatus(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
     try:
-        portfolio = get_portfolio()
-        profits = get_profit_estimates()
-        sentiment = get_sentiment_data()
-
+        portfolio = get_portfolio() or []
+        profits = get_profit_estimates() or []
+        sentiment = get_sentiment_data() or {}
         msg = "📊 Portfolio:\n"
         for h in portfolio:
-            msg += f"• {h['coin']}: {h['amount']} → {h['value']} €\n"
-
+            msg += f"• {h.get('coin')}: {h.get('amount')} → {h.get('value')} €\n"
         msg += "\n💰 Gewinne:\n"
         for p in profits:
-            msg += f"{p['coin']}: {p['profit']} € ({p['percent']}%)\n"
-
-        msg += f"\n📡 Sentiment: {sentiment['sentiment'].upper()} ({sentiment['score']})"
-        bot.send_message(message.chat.id, msg)
+            msg += f"{p.get('coin')}: {p.get('profit')} € ({p.get('percent')}%)\n"
+        msg += f"\n📡 Sentiment: {sentiment.get('sentiment','').upper()} ({sentiment.get('score',0)})"
+        safe_send(message.chat.id, msg)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Fehler bei /autostatus: {e}")
+        safe_send(message.chat.id, f"❌ Fehler bei /autostatus: {e}")
 
 @bot.message_handler(commands=['commands'])
 def cmd_commands(message):
-    if message.chat.id != ADMIN_ID:
+    if not is_admin(message):
         return
-    text = """
-📜 *OmertaTradeBot — Befehlsübersicht*:
+    text = """📜 *OmertaTradeBot — Befehlsübersicht*:
 
 💼 *Allgemein*
 /start — Bot begrüßt dich
@@ -251,7 +269,6 @@ def cmd_commands(message):
 /portfolio — Zeigt dein Portfolio
 /profit — Gewinn- & Verlustübersicht
 /indicators — RSI, MACD, EMA, Bollinger
-/forecast — Marktprognose
 /recommend — Trading-Empfehlungen
 /tradelogic — Entscheidungssimulation
 /panic — Notbremsenprüfung
@@ -270,11 +287,10 @@ def cmd_commands(message):
 /ghoststatus — Überwacht Ghost Exits
 /ghostranking — Top Coins im Ghost-Modus
 
-💬 *Sentiment & Crawler*
+💬 *Sentiment*
 /sentiment — Marktstimmung analysieren
-
 """
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    safe_send(message.chat.id, text, parse_mode="Markdown")
 
 # === Startup Tasks ===
 def startup_tasks():
@@ -282,19 +298,14 @@ def startup_tasks():
         if not os.path.exists(file):
             with open(file, "w") as f:
                 json.dump([], f)
-
-    print("🕒 Preise loggen...")
     write_history()
-    print("🧠 Simulation starten...")
     run_simulation()
-    print("📋 Entscheidungen loggen...")
     log_trade_decisions(make_trade_decision())
-    print("🔁 Feedback-Learning starten...")
     run_feedback_loop()
 
 # === Bot starten ===
 if __name__ == '__main__':
-    threading.Thread(target=run_scheduler).start()
-    startup_tasks()
+    threading.Thread(target=run_scheduler, daemon=True).start()
+    threading.Thread(target=startup_tasks, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
