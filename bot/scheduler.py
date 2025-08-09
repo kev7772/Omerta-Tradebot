@@ -2,13 +2,19 @@ import schedule
 import time
 import os
 import json
-from telebot import TeleBot
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from telebot import TeleBot
 
 # === Bot Setup ===
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-bot = TeleBot(BOT_TOKEN)
+BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
+ADMIN_ID = os.getenv("ADMIN_ID", "").strip()
+try:
+    ADMIN_ID = int(ADMIN_ID)
+except Exception:
+    ADMIN_ID = None
+
+bot = TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 
 # === Imports für geplante Tasks ===
 from trading import get_portfolio, get_profit_estimates
@@ -21,87 +27,120 @@ from crawler import run_crawler
 from crawler_alert import detect_hype_signals
 from ghost_mode import run_ghost_mode, check_ghost_exit
 
+# === Helper ===
+def _send(msg, **kwargs):
+    if bot and ADMIN_ID:
+        try:
+            bot.send_message(ADMIN_ID, msg, **kwargs)
+        except Exception as e:
+            print(f"[Telegram] Sendefehler: {e}")
+
+def _job(name, fn):
+    try:
+        return fn()
+    except Exception as e:
+        print(f"[{name}] Fehler: {type(e).__name__}: {e}")
+        _send(f"⚠️ {name} Fehler: {e}")
+        return None
+
 # === Sicherstellen, dass JSON-Dateien existieren ===
 for file in ["crawler_data.json", "learning_log.json", "history.json"]:
     if not os.path.exists(file):
-        with open(file, "w") as f:
+        with open(file, "w", encoding="utf-8") as f:
             json.dump([], f)
 
-# === Autostatus (täglicher Bericht) ===
+# === Autostatus ===
 def send_autostatus():
     try:
-        # Portfolio
-        portfolio = get_portfolio()
+        portfolio = get_portfolio() or []
         portfolio_msg = "📊 Autostatus — Portfolio:\n"
         for h in portfolio:
             portfolio_msg += f"{h['coin']}: {h['amount']} → {h['value']} €\n"
-        bot.send_message(ADMIN_ID, portfolio_msg)
+        _send(portfolio_msg)
 
-        # Gewinne
-        profits = get_profit_estimates()
+        profits = get_profit_estimates() or []
         profit_msg = "💰 Buchgewinne:\n"
         for p in profits:
             profit_msg += f"{p['coin']}: {p['profit']} € ({p['percent']}%)\n"
-        bot.send_message(ADMIN_ID, profit_msg)
+        _send(profit_msg)
 
-        # Marktstimmung
-        sentiment = get_sentiment_data()
-        sent_msg = f"📡 Marktstimmung: {sentiment['sentiment'].upper()} ({sentiment['score']})\n"
-        sent_msg += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sentiment['sources']])
-        bot.send_message(ADMIN_ID, sent_msg)
+        sentiment = get_sentiment_data() or {}
+        sent_label = str(sentiment.get('sentiment', '')).upper()
+        sent_score = sentiment.get('score', 0)
+        sources = sentiment.get('sources', [])
+        sent_msg = f"📡 Marktstimmung: {sent_label} ({sent_score})\n"
+        if sources:
+            sent_msg += "📚 Quellen:\n" + "\n".join([f"- {s}" for s in sources])
+        _send(sent_msg)
 
-        # Lernbewertung
-        results = run_feedback_loop()
+        results = run_feedback_loop() or []
         if results:
             feedback = "📈 Lernbewertung (Auto):\n"
             for r in results:
                 emoji = "✅" if r["success"] > 0 else "❌"
-                feedback += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
-            bot.send_message(ADMIN_ID, feedback)
+                feedback += f"{emoji} {r['coin']} ({r['date']}) → {r['success']} %\n"
+            _send(feedback)
         else:
-            bot.send_message(ADMIN_ID, "📘 Keine offenen Lernbewertungen (Auto).")
+            _send("📘 Keine offenen Lernbewertungen (Auto).")
 
-        # Fehleranalyse
         fehlerbericht = analyze_errors()
-        bot.send_message(ADMIN_ID, fehlerbericht, parse_mode="Markdown")
+        _send(fehlerbericht, parse_mode="Markdown")
 
     except Exception as e:
-        bot.send_message(ADMIN_ID, f"⚠️ Fehler bei /autostatus: {e}")
+        _send(f"⚠️ Fehler bei /autostatus: {e}")
 
-# === Ghost Mode Zeitsteuerung ===
-def ghost_schedule():
-    entries = run_ghost_mode()
-    print(f"[GhostMode] {len(entries)} Ghost Entries erkannt." if entries else "[GhostMode] Keine Einträge erkannt.")
+# === Ghost Mode ===
+def ghost_entry_job():
+    entries = _job("GhostMode Entry", run_ghost_mode)
+    if entries:
+        _send(f"🕵🏽‍♂️ {len(entries)} Ghost Entries erkannt.")
 
-# === Preislogger mit Logging ===
+def ghost_exit_job():
+    exits = _job("GhostMode Exit", check_ghost_exit)
+    if exits:
+        _send(f"🏁 {len(exits)} Ghost Exits erkannt.")
+
+# === Logger ===
 def log_prices_task():
-    try:
-        write_history()
-        print(f"[Logger] Preise gespeichert um {datetime.now()}")
-    except Exception as e:
-        print(f"[Logger] Fehler beim Speichern der Preise: {e}")
+    _job("Logger", write_history)
 
-# === Simulation mit Logging ===
+# === Simulation ===
 def simulation_task():
-    try:
-        run_simulation()
-        print(f"[Simulation] Historische Simulation abgeschlossen um {datetime.now()}")
-    except Exception as e:
-        print(f"[Simulation] Fehler bei der Simulation: {e}")
+    _job("Simulation", run_simulation)
 
 # === Hype Check ===
 def hype_check():
-    try:
-        hype_alerts = detect_hype_signals()
-        if hype_alerts:
+    def _run():
+        alerts = detect_hype_signals() or []
+        if alerts:
             alert_msg = "🚨 Hype-Alarm:\n"
-            for h in hype_alerts:
-                alert_msg += f"{h['coin']} (Score: {h['score']})\nQuellen: {', '.join(h['sources'])}\n\n"
-            bot.send_message(ADMIN_ID, alert_msg)
-    except Exception as e:
-        print(f"[HypeCheck] Fehler: {e}")
+            for h in alerts:
+                alert_msg += f"{h['coin']} (Score: {h['score']})\n"
+                if 'sources' in h:
+                    alert_msg += "Quellen: " + ", ".join(h['sources']) + "\n\n"
+            _send(alert_msg)
+    _job("HypeCheck", _run)
 
-# === Zeitbasierte Aufgaben definieren ===
+# === Autostatus um 12:00 Berlin (DST-sicher) ===
+def schedule_autostatus_local(hour=12, minute=0):
+    try:
+        schedule.clear('autostatus')
+    except Exception:
+        pass
+    utc = ZoneInfo("UTC")
+    berlin = ZoneInfo("Europe/Berlin")
+    now_utc = datetime.utcnow().replace(tzinfo=utc)
+    now_berlin = now_utc.astimezone(berlin)
+    target_berlin = now_berlin.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if now_berlin >= target_berlin:
+        target_berlin += timedelta(days=1)
+    target_utc = target_berlin.astimezone(utc)
+    utc_time_str = target_utc.strftime("%H:%M")
+    job = schedule.every().day.at(utc_time_str).do(send_autostatus)
+    job.tag('autostatus')
+    print(f"[Scheduler] Autostatus 12:00 Berlin -> {utc_time_str} UTC")
+
+# === Zeitplan (aus Ursprungsdatei) ===
 def run_scheduled_tasks():
     schedule.every(1).hours.do(run_ghost_mode)
     schedule.every(1).hours.do(check_ghost_exit)
@@ -109,29 +148,39 @@ def run_scheduled_tasks():
     schedule.every(1).hours.do(run_crawler)
     schedule.every(1).hours.do(hype_check)
     schedule.every(6).hours.do(run_feedback_loop)
-    schedule.every(1).hours.do(simulation_task)  # statt 12h → jede Stunde für permanenten Lernmodus
-    schedule.every().day.at("12:00").do(send_autostatus)
+    schedule.every(1).hours.do(simulation_task)
+    schedule_autostatus_local(12, 0)
 
-# === Scheduler dauerhaft starten ===
+# === Scheduler starten + Sofortläufe ===
 def run_scheduler():
     print("⏰ Omerta Scheduler läuft...")
     run_scheduled_tasks()
+
+    # Sofortige Erstläufe
+    print("[Scheduler] Initiale Sofortläufe gestartet...")
+    ghost_entry_job()
+    ghost_exit_job()
+    log_prices_task()
+    run_crawler()
+    hype_check()
+    run_feedback_loop()
+    simulation_task()
+    send_autostatus()
+
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
+        except Exception as e:
+            print(f"[Scheduler] Fehler: {e}")
+            _send(f"⚠️ Scheduler-Fehler: {e}")
         time.sleep(30)
 
-# === Schedulerstatus für Telegram-Befehl ===
+# === Statusabruf ===
 def get_scheduler_status():
-    now = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+    now_local = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M:%S %Z")
     status = "🗓️ *Omerta Scheduler Status:*\n\n"
-    status += "🧠 Aktive Hintergrundprozesse:\n"
-    status += "• Ghost Entry Check (1h)\n"
-    status += "• Ghost Exit Analyse (1h)\n"
-    status += "• Live Preis-Logger (1h)\n"
-    status += "• Markt-Crawler (1h)\n"
-    status += "• Hype/Trend-Analyse (1h)\n"
-    status += "• Feedback-Learning (6h)\n"
-    status += "• Historische Simulation (1h)\n"
-    status += "• Autostatus-Bericht (12:00 täglich)\n"
-    status += f"\n🕒 Stand: {now}"
+    for job in schedule.get_jobs():
+        tags = ",".join(job.tags) if job.tags else "-"
+        status += f"• {job} — next: {job.next_run} — tags: {tags}\n"
+    status += f"\n🕒 Stand (Berlin): {now_local}"
     return status
