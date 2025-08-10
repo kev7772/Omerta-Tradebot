@@ -1,13 +1,27 @@
+# simulator.py
+# — OmertaTradeBot: Historische & Live-Simulation —
+# EUR-basiert, Berlin-Zeit, robuste JSON-I/O, kompatibel zu /simstatus
+
+import os
 import json
 import random
 from datetime import datetime
-from binance.client import Client
-import os
+from zoneinfo import ZoneInfo
 
-# Binance API laden
+from binance.client import Client
+from trading import get_current_prices, get_eur_rate  # nutzt bereits Binance & EURUSDT
+
+# === Binance API ===
 API_KEY = os.getenv("BINANCE_API_KEY")
 API_SECRET = os.getenv("BINANCE_API_SECRET")
 client = Client(API_KEY, API_SECRET)
+
+# === Files ===
+SIM_LOG_FILE = "log_simulation.json"
+SIM_META_FILE = "log_simulation_meta.json"
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
 
 # ========== HISTORISCHE SZENARIEN ==========
 historical_scenarios = [
@@ -45,117 +59,174 @@ historical_scenarios = [
     }
 ]
 
-def run_simulation():
+
+# ========== Helpers ==========
+def _now_str() -> str:
+    return datetime.now(BERLIN).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _load_json_list(path: str) -> list:
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        pass
+    return []
+
+
+def _save_json_list(path: str, data: list) -> None:
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[simulator] Fehler beim Schreiben {path}: {e}")
+
+
+def _append_json_list(path: str, entries: list) -> None:
+    data = _load_json_list(path)
+    data.extend(entries)
+    _save_json_list(path, data)
+
+
+# ========== Kernlogik ==========
+def get_decision_based_on_scenario(scenario: dict) -> str:
+    drop = scenario["price_after"] < (0.3 * scenario["price_before"])
+    if scenario.get("volume_crash") or drop:
+        return "verkauft"
+    elif scenario["price_after"] > scenario["price_before"]:
+        return "gekauft"
+    return "gehalten"
+
+
+def evaluate_decision(decision: str, percent_change: float) -> str:
+    if decision == "verkauft" and percent_change <= -50:
+        return "Top – Verlust vermieden"
+    if decision == "gehalten" and percent_change <= -50:
+        return "Fehler – Hätte verkaufen sollen"
+    if decision == "gekauft" and percent_change > 0:
+        return "Guter Einstieg"
+    return "Neutral / kein klarer Vorteil"
+
+
+def simulate_live_decision(coin: str, price_eur: float) -> str:
+    # Simple Heuristik (Demo): sehr günstige Coins → "gekauft", sehr teure → "gehalten", sonst "verkauft"
+    if price_eur < 1.0:
+        return "gekauft"
+    if price_eur > 1000.0:
+        return "gehalten"
+    return "verkauft"
+
+
+# ========== Public API ==========
+def run_simulation() -> str:
+    """Spielt ein zufälliges historisches Szenario durch und loggt in log_simulation.json."""
     print("🔁 Starte historische Simulation...")
 
     scenario = random.choice(historical_scenarios)
     decision = get_decision_based_on_scenario(scenario)
-    percent_change = ((scenario["price_after"] - scenario["price_before"]) / scenario["price_before"]) * 100
 
+    percent_change = ((scenario["price_after"] - scenario["price_before"]) / scenario["price_before"]) * 100.0
     log_entry = {
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "szenario": scenario["name"],
+        "timestamp": _now_str(),
+        "mode": "historical",
+        "scenario": scenario["name"],
+        "date_ref": scenario["date"],
         "coin": scenario["coin"],
-        "preis_vorher": scenario["price_before"],
-        "preis_nachher": scenario["price_after"],
-        "änderung": f"{percent_change:.2f}%",
-        "entscheidung": decision,
-        "verhalten": evaluate_decision(decision, percent_change),
-        "success": round(abs(percent_change), 2) if decision in ["verkauft", "gekauft"] else 0.0
+        "price_before": scenario["price_before"],
+        "price_after": scenario["price_after"],
+        "percent_change": round(percent_change, 2),
+        "decision": decision,
+        "assessment": evaluate_decision(decision, percent_change),
+        "success_metric": round(abs(percent_change), 2) if decision in {"verkauft", "gekauft"} else 0.0
     }
 
-    save_simulation_log([log_entry], batch=True)
-    log_simulation_meta(log_entry)
+    _append_json_list(SIM_LOG_FILE, [log_entry])
+    _append_json_list(SIM_META_FILE, [{
+        "timestamp": _now_str(),
+        "type": "historical",
+        "items": 1,
+        "info": {"scenario": scenario["name"], "coin": scenario["coin"]}
+    }])
+
     return f"📊 Historische Simulation abgeschlossen ({scenario['name']} – {scenario['coin']})"
 
-def run_live_simulation():
+
+def run_live_simulation() -> str:
+    """Nutzt Live-Preise, rechnet in EUR um und loggt mehrere Coins."""
     print("⚙️ Starte Live-Simulation mit echten Kursdaten...")
 
     try:
-        prices = client.get_all_tickers()
+        price_map_usdt = get_current_prices()  # {'BTCUSDT': 63750.0, ...}
+        eur_rate = get_eur_rate(price_map_usdt) or 1.0
     except Exception as e:
         return f"❌ Fehler beim Abrufen der Live-Daten: {e}"
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    selected_coins = ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "LTCUSDT"]
+    timestamp = _now_str()
+    # Auswahl beliebter Paare – kann easy erweitert werden
+    watch_symbols = ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "LTCUSDT", "SOLUSDT", "XRPUSDT"]
     log_entries = []
 
-    for p in prices:
-        if p["symbol"] in selected_coins:
-            price = float(p["price"])
-            coin = p["symbol"].replace("USDT", "")
-            decision = simulate_live_decision(coin, price)
-            log_entries.append({
-                "date": timestamp,
-                "coin": coin,
-                "preis_live": price,
-                "entscheidung": decision,
-                "verhalten": "Live-Modus",
-                "success": round(random.uniform(5, 25), 2) if decision == "gekauft" else round(random.uniform(-15, 10), 2)
-            })
+    for sym in watch_symbols:
+        usdt_price = float(price_map_usdt.get(sym, 0.0))
+        if usdt_price <= 0:
+            continue
 
-    save_simulation_log(log_entries, batch=True)
-    log_simulation_meta({"date": timestamp, "anzahl": len(log_entries), "typ": "live"})
+        coin = sym.replace("USDT", "")
+        price_eur = usdt_price / eur_rate
+        decision = simulate_live_decision(coin, price_eur)
+
+        # simple Success-Schätzung (rein Demo)
+        success = (
+            round(random.uniform(5, 25), 2) if decision == "gekauft"
+            else round(random.uniform(-15, 10), 2)
+        )
+
+        log_entries.append({
+            "timestamp": timestamp,
+            "mode": "live",
+            "coin": coin,
+            "price_eur": round(price_eur, 6),
+            "decision": decision,
+            "assessment": "Live-Modus (Heuristik)",
+            "success_metric": success
+        })
+
+    if not log_entries:
+        return "⚠️ Keine passenden Live-Preise gefunden."
+
+    _append_json_list(SIM_LOG_FILE, log_entries)
+    _append_json_list(SIM_META_FILE, [{
+        "timestamp": timestamp,
+        "type": "live",
+        "items": len(log_entries),
+        "info": {"watchlist": [e['coin'] for e in log_entries]}
+    }])
 
     for entry in log_entries:
-        print(f"[*] {entry['coin']} – Preis: {entry['preis_live']} € – Entscheidung: {entry['entscheidung']}")
+        print(f"[*] {entry['coin']} – {entry['price_eur']} € – Entscheidung: {entry['decision']}")
 
     return f"✅ Live-Simulation abgeschlossen mit {len(log_entries)} Coins."
 
-def get_decision_based_on_scenario(scenario):
-    if scenario["volume_crash"] or scenario["price_after"] < (0.3 * scenario["price_before"]):
-        return "verkauft"
-    elif scenario["price_after"] > scenario["price_before"]:
-        return "gekauft"
-    else:
-        return "gehalten"
 
-def simulate_live_decision(coin, price):
-    if "DOGE" in coin or price < 0.5:
-        return "gekauft"
-    elif price > 1000:
-        return "gehalten"
-    else:
-        return "verkauft"
+def get_simulation_status() -> str:
+    """
+    Liefert eine kompakte Status-Zeile für /simstatus:
+    - Anzahl Einträge
+    - Letzter Timestamp
+    - Letzter Typ (historical/live)
+    """
+    logs = _load_json_list(SIM_LOG_FILE)
+    meta = _load_json_list(SIM_META_FILE)
 
-def evaluate_decision(decision, percent_change):
-    if decision == "verkauft" and percent_change < -50:
-        return "Top – Verlust vermieden"
-    elif decision == "gehalten" and percent_change < -50:
-        return "Fehler – Hätte verkaufen sollen"
-    elif decision == "gekauft" and percent_change > 0:
-        return "Guter Einstieg"
-    else:
-        return "Neutral / kein klarer Vorteil"
+    count = len(logs)
+    last_time = "—"
+    last_type = "—"
 
-def save_simulation_log(entries, batch=False):
-    filepath = "simulation_log.json"
-    try:
-        with open(filepath, "r") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = []
+    if meta:
+        last = meta[-1]
+        last_time = last.get("timestamp", "—")
+        last_type = last.get("type", "—")
 
-    if batch:
-        data.extend(entries)
-    else:
-        data.append(entries[0])  # Nur den ersten Eintrag bei Einzelmodus
-
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=2)
-
-def log_simulation_meta(entry):
-    filepath = "simulation_log_meta.json"
-    try:
-        with open(filepath, "r") as f:
-            meta = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        meta = {"simulationen": []}
-
-    meta["simulationen"].append({
-        "datum": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        "info": entry
-    })
-
-    with open(filepath, "w") as f:
-        json.dump(meta, f, indent=2)
+    return f"🧪 Simulationen: {count} | Letzter Lauf: {last_time} | Typ: {last_type}"
