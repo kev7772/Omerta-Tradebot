@@ -221,6 +221,15 @@ def cmd_recommend(message):
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /recommend: {e}")
 
+@bot.message_handler(commands=['learningstats'])
+def cmd_learningstats(message):
+    if not is_admin(message): return
+    try:
+        lines = generate_learning_stats(days=30)  # z. B. letzte 30 Tage
+        safe_send(message.chat.id, "\n".join(lines))
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /learningstats: {e}")
+
 @bot.message_handler(commands=['tradelogic'])
 def cmd_tradelogic(message):
     if not is_admin(message): return
