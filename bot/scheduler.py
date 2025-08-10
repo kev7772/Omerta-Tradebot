@@ -1,4 +1,4 @@
-# scheduler.py — clean, stable, DST-safe (Europe/Berlin) + Live-Logger v2 integriert
+# scheduler.py — clean, DST-safe (Europe/Berlin) + Auto-Datenfeeds für alle JSON-Logs
 
 from __future__ import annotations
 
@@ -9,9 +9,8 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from telebot import TeleBot
-from bootstrap_learning import ensure_min_learning_entries
 
-# === Bot Setup (defensiv) ===
+# ==== Bot Setup (defensiv) ====
 BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
 ADMIN_ID_RAW = os.getenv("ADMIN_ID", "").strip()
 try:
@@ -21,17 +20,22 @@ except Exception:
 
 bot = TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 
-# === Imports für geplante Tasks ===
+# ==== Projekt-Imports ====
 from trading import get_portfolio, get_profit_estimates
 from sentiment_parser import get_sentiment_data
 from live_logger import write_history, load_history_safe
 from feedback_loop import run_feedback_loop
 from error_pattern_analyzer import analyze_errors
-from simulator import run_simulation
+from simulator import run_simulation, run_live_simulation
 from crawler import run_crawler
 from crawler_alert import detect_hype_signals
 from ghost_mode import run_ghost_mode, check_ghost_exit
-from learn_scheduler import evaluate_pending_learnings  # Auto-Learn integriert
+from learn_scheduler import evaluate_pending_learnings
+from bootstrap_learning import ensure_min_learning_entries
+
+# NEU: Entscheidungen automatisch erzeugen & loggen
+from logic import make_trade_decision
+from decision_logger import log_trade_decisions
 
 # Optional für Binance-Snapshots
 try:
@@ -40,7 +44,7 @@ except Exception:
     Client = None
 
 
-# ---------- Helper ----------
+# ---------------- Helper ----------------
 def _send(msg, **kwargs):
     if bot and ADMIN_ID:
         try:
@@ -62,8 +66,6 @@ def _schedule_daily_berlin(hour: int, minute: int, fn, tag: str | None = None):
     """
     Plant einen Job für eine Berlin-Uhrzeit (DST-sicher), indem die Zeit in UTC
     umgerechnet und mit schedule.every().day.at(UTC) registriert wird.
-    Achtung: schedule nutzt die lokale Systemzeit. Railway läuft i. d. R. in UTC,
-    daher registrieren wir die UTC-Zeit explizit.
     """
     utc = ZoneInfo("UTC")
     berlin = ZoneInfo("Europe/Berlin")
@@ -86,7 +88,7 @@ def _schedule_daily_berlin(hour: int, minute: int, fn, tag: str | None = None):
     return job
 
 
-# ---------- Live-Logger Jobs ----------
+# ---------------- Live-Logger ----------------
 def log_snapshot_from_binance(symbols=("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")) -> int:
     """
     Holt Preise direkt von Binance und schreibt sie in history.json.
@@ -121,8 +123,7 @@ def log_snapshot_from_binance(symbols=("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT
 
 def log_snapshot_from_estimates() -> int:
     """
-    Baut prices_input aus get_profit_estimates(), loggt nur Einträge mit echtem 'price'.
-    Akzeptiert sowohl 'price' als auch 'current' (EUR) aus trading.get_profit_estimates().
+    Baut prices_input aus get_profit_estimates(), loggt nur Einträge mit echtem 'price'/'current'.
     """
     try:
         estimates = get_profit_estimates() or []
@@ -143,6 +144,25 @@ def log_snapshot_from_estimates() -> int:
     except Exception as e:
         print(f"[Logger] Estimates Snapshot Fehler: {e}")
         return 0
+
+
+# ---------------- Pruning (alle Logs) ----------------
+def _prune_json_list(file_path: str, max_entries: int) -> None:
+    try:
+        if not os.path.exists(file_path):
+            return
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            return
+        if len(data) <= max_entries:
+            return
+        cut = data[-max_entries:]
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(cut, f, ensure_ascii=False, indent=2)
+        print(f"[Prune] {os.path.basename(file_path)} -> {len(cut)} Einträge")
+    except Exception as e:
+        print(f"[Prune] Fehler bei {file_path}: {e}")
 
 
 def prune_history(max_entries: int = 200_000, backup_path: str = "history_backup.json") -> None:
@@ -170,7 +190,15 @@ def prune_history(max_entries: int = 200_000, backup_path: str = "history_backup
         print(f"[Logger] Prune-Fehler: {e}")
 
 
-# ---------- Business Jobs ----------
+def prune_other_logs():
+    # leichte Caps für die restlichen Logs
+    _prune_json_list("learning_log.json",   10_000)
+    _prune_json_list("decision_log.json",    5_000)
+    _prune_json_list("simulation_log.json",  5_000)
+    _prune_json_list("ghost_log.json",       5_000)
+
+
+# ---------------- Business Jobs (Auto-Feeds) ----------------
 def send_autostatus():
     try:
         portfolio = get_portfolio() or []
@@ -190,7 +218,7 @@ def send_autostatus():
 
         msg += f"\n📡 Sentiment: {str(sentiment.get('sentiment','')).upper()} ({sentiment.get('score',0)})"
 
-        # Lernzahlen (leichtgewichtig)
+        # Lernzahlen
         try:
             open_cnt = 0
             learned_cnt = 0
@@ -233,37 +261,93 @@ def learn_job():
         _send(f"🧠 Auto-Learn: {processed} Entscheidung(en) bewertet.")
 
 
-# ---------- Zeitplan ----------
+def decisions_cycle():
+    """
+    Erzeugt Entscheidungen, loggt sie und stößt direkt den Feedback-Loop an.
+    -> füllt decision_log.json und (zeitversetzt) learning_log.json
+    """
+    try:
+        decisions = make_trade_decision() or {}
+        log_trade_decisions(decisions)
+    except Exception as e:
+        print(f"[Decisions] Log-Fehler: {e}")
+    try:
+        run_feedback_loop()
+    except Exception as e:
+        print(f"[Feedback] Fehler: {e}")
+
+
+def live_sim_cycle():
+    """Füttert simulation_log.json regelmäßig mit Live-Simulationen."""
+    try:
+        res = run_live_simulation()
+        print(f"[LiveSim] {res}")
+    except Exception as e:
+        print(f"[LiveSim] Fehler: {e}")
+
+
+def ghost_cycle():
+    """Regelmäßiger Ghost-Scan (Entries & Exits) -> ghost_log.json."""
+    try:
+        run_ghost_mode()
+    except Exception as e:
+        print(f"[Ghost] Entry-Fehler: {e}")
+    try:
+        check_ghost_exit()
+    except Exception as e:
+        print(f"[Ghost] Exit-Fehler: {e}")
+
+
+def crawler_cycle():
+    """Regelmäßiger Crawler + Hype-Check -> crawler_data.json."""
+    try:
+        run_crawler()
+    except Exception as e:
+        print(f"[Crawler] Fehler: {e}")
+    try:
+        detect_hype_signals()
+    except Exception as e:
+        print(f"[HypeCheck] Fehler: {e}")
+
+
+# ---------------- Zeitplan ----------------
 def run_scheduler():
     print("⏰ Omerta Scheduler läuft...")
 
-    # --- Live-Logger v2 ---
+    # Live-Logger
     schedule.every(1).hours.do(lambda: _job("Logger (Binance)", log_snapshot_from_binance))
     schedule.every(3).hours.do(lambda: _job("Logger (Estimates)", log_snapshot_from_estimates))
     _schedule_daily_berlin(3, 15, lambda: _job("Logger (Prune+Backup)", prune_history), tag="logger_maintenance")
 
-    # --- Lernen & Checks ---
-    schedule.every(1).hours.do(learn_job)
-    # --- Lernlog nachfüttern, falls zu wenig Daten vorhanden ---
-    schedule.every(6).hours.do(lambda: _job("Learning-Nachfuellen", lambda: ensure_min_learning_entries(min_entries=100, max_cycles=6)))
+    # Automatische Datenfeeds
+    schedule.every(1).hours.do(decisions_cycle)     # decision_log + feedback
+    schedule.every(2).hours.do(live_sim_cycle)      # simulation_log
+    schedule.every(3).hours.do(ghost_cycle)         # ghost_log
+    schedule.every(6).hours.do(crawler_cycle)       # crawler_data
 
-    # --- Täglich zu Berlin-Zeiten (DST-sicher) ---
+    # Lernen & Checks
+    schedule.every(1).hours.do(learn_job)
+    schedule.every(12).hours.do(prune_other_logs)
+
+    # Lernlog-Nachfüllen falls mager
+    schedule.every(6).hours.do(lambda: _job("Learning-Nachfuellen",
+                                            lambda: ensure_min_learning_entries(min_entries=100, max_cycles=6)))
+
+    # Täglich zu Berlin-Zeiten (DST-sicher)
     _schedule_daily_berlin(8, 0,  send_autostatus,       tag="autostatus")
-    _schedule_daily_berlin(9, 0,  lambda: _job("FeedbackLoop", run_feedback_loop))
+    _schedule_daily_berlin(9, 0,  lambda: _job("FeedbackLoop (Daily)", run_feedback_loop))
     _schedule_daily_berlin(10, 0, lambda: _job("ErrorAnalysis", analyze_errors))
-    _schedule_daily_berlin(11, 0, lambda: _job("Crawler", run_crawler))
-    _schedule_daily_berlin(11, 5, lambda: _job("HypeCheck", detect_hype_signals))
-    _schedule_daily_berlin(12, 0, lambda: _job("GhostMode Entry", run_ghost_mode))
-    _schedule_daily_berlin(12, 5, lambda: _job("GhostMode Exit", check_ghost_exit))
-    _schedule_daily_berlin(13, 0, lambda: _job("Simulation", run_simulation))
+    _schedule_daily_berlin(13, 0, lambda: _job("Simulation (Historical)", run_simulation))
 
     print("✅ Scheduler gestartet und alle Tasks geladen.")
 
-    # Sofortläufe beim Start (optional, non-blocking)
+    # Sofortläufe beim Start (sanft)
     try:
-        learn_job()
+        decisions_cycle()
+        live_sim_cycle()
+        ghost_cycle()
+        crawler_cycle()
         send_autostatus()
-        _job("Crawler (Initial)", run_crawler)
         _job("Logger (Init Binance)", log_snapshot_from_binance)
     except Exception as e:
         print(f"[Scheduler] Fehler bei Initialläufen: {e}")
@@ -277,7 +361,7 @@ def run_scheduler():
         time.sleep(1)
 
 
-# ---------- Status für /schedulerstatus ----------
+# ---------------- Status für /schedulerstatus ----------------
 def get_scheduler_status():
     try:
         berlin = ZoneInfo("Europe/Berlin")
