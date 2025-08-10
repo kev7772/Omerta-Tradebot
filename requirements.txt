@@ -13,3 +13,4 @@ numpy
 seaborn
 pytrends
 requests
+feedparser
