@@ -9,6 +9,7 @@ from flask import Flask, request
 from datetime import datetime
 
 # === Imports aus deinem Projekt ===
+from analyze_learning import generate_learning_stats, export_learning_report
 from scheduler import run_scheduler, get_scheduler_status
 from live_logger import write_history, load_history_safe
 from simulator import run_simulation, run_live_simulation
