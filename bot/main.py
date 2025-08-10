@@ -474,6 +474,60 @@ def cmd_logbinance(message):
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /logbinance: {e}")
 
+@bot.message_handler(commands=['selftest'])
+def cmd_selftest(message):
+    if not is_admin(message): return
+    try:
+        checks = []
+
+        # Env & Bot
+        checks.append(f"BOT_TOKEN gesetzt: {'✅' if os.getenv('BOT_TOKEN') else '❌'}")
+        checks.append(f"ADMIN_ID gesetzt: {'✅' if os.getenv('ADMIN_ID') else '❌'}")
+
+        # Dateien
+        files = ["history.json", "learning_log.json", "ghost_log.json", "crawler_data.json"]
+        for f in files:
+            exists = os.path.exists(f)
+            size = os.path.getsize(f) if exists else 0
+            checks.append(f"{f}: {'✅' if exists else '❌'} ({size} B)")
+
+        # Kernfunktionen (sanft)
+        ok_portfolio = False
+        try:
+            p = get_portfolio() or []
+            ok_portfolio = isinstance(p, list)
+        except Exception:
+            pass
+        checks.append(f"get_portfolio(): {'✅' if ok_portfolio else '❌'}")
+
+        ok_profit = False
+        try:
+            pe = get_profit_estimates() or []
+            ok_profit = isinstance(pe, list)
+        except Exception:
+            pass
+        checks.append(f"get_profit_estimates(): {'✅' if ok_profit else '❌'}")
+
+        ok_sent = False
+        try:
+            s = get_sentiment_data()
+            ok_sent = s is not None
+        except Exception:
+            pass
+        checks.append(f"get_sentiment_data(): {'✅' if ok_sent else '❌'}")
+
+        # Scheduler Status
+        try:
+            status = get_scheduler_status()
+            checks.append("Scheduler: ✅" if status else "Scheduler: ❌")
+        except Exception:
+            checks.append("Scheduler: ❌")
+
+        # Ergebnis senden
+        safe_send(message.chat.id, "🧪 *Selftest*\n" + "\n".join("• " + c for c in checks), parse_mode="Markdown")
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /selftest: {e}")
+
 # === Startup Tasks (asynchron) ===
 def startup_tasks():
     # Dateien anlegen, falls nicht vorhanden
