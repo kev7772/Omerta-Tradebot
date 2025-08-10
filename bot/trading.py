@@ -1,29 +1,29 @@
-# trading.py
+# trading.py — clean & EUR-consistent
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from binance.client import Client
 
 # === API-Setup ===
 API_KEY = os.getenv("BINANCE_API_KEY")
 API_SECRET = os.getenv("BINANCE_API_SECRET")
+# Public Endpoints (get_all_tickers) funktionieren auch ohne Keys, aber wir initialisieren trotzdem
 client = Client(API_KEY, API_SECRET)
 
-HISTORY_FILE = "history.json"
-
+HISTORY_FILE = "history.json"   # Format: { "YYYY-MM-DD": {"BTC": eur_price, ...}, ... }
 
 # === Live-Preisumrechnung: USDT → EUR ===
 def get_eur_rate(price_map: dict) -> float:
     """
-    EURUSDT = wie viele USDT ist 1 EUR wert.
-    Um von USDT-Preis auf EUR zu kommen: euro_price = usdt_price / EURUSDT
+    EURUSDT = wie viele USDT entsprechen 1 EUR.
+    EUR-Preis = USDT-Preis / EURUSDT. Fallback: 1.0 (keine Umrechnung).
     """
     try:
         eurusdt = float(price_map.get("EURUSDT", 0))
         return eurusdt if eurusdt > 0 else 1.0
     except Exception:
         return 1.0
-
 
 def _get_price_map_usdt() -> dict:
     """Holt alle Binance-Tickerpreise als {SYMBOL: price(float)} in USDT-Notation."""
@@ -34,15 +34,11 @@ def _get_price_map_usdt() -> dict:
         print(f"[trading] Fehler bei get_all_tickers: {e}")
         return {}
 
-
 # === Portfolio abrufen (Werte in EUR) ===
 def get_portfolio() -> list:
     """
-    Gibt Liste zurück:
-    [
-      { 'coin': 'BTC', 'amount': 0.1234, 'price': 25123.45 (EUR), 'value': 3090.12 (EUR) },
-      ...
-    ]
+    Gibt Liste zurück (nur Coins mit USDT-Paar):
+    [{ 'coin': 'BTC', 'amount': 0.1234, 'price': 25123.45 (EUR), 'value': 3090.12 (EUR) }, ...]
     """
     try:
         account = client.get_account()
@@ -73,7 +69,7 @@ def get_portfolio() -> list:
             symbol = f"{coin}USDT"
             usdt_price = float(price_map.get(symbol, 0.0))
             if usdt_price <= 0:
-                # Kein USDT-Paar → skippen
+                # kein USDT-Paar → überspringen
                 continue
 
             price_eur = round(usdt_price / eur_rate, 6)
@@ -82,16 +78,15 @@ def get_portfolio() -> list:
             holdings.append({
                 "coin": coin,
                 "amount": total,
-                "price": price_eur,  # EUR/Einheit
-                "value": value_eur    # EUR Gesamt
+                "price": price_eur,   # EUR/Einheit
+                "value": value_eur    # EUR gesamt
             })
     except Exception as e:
         print(f"[trading] Fehler bei Portfolio-Verarbeitung: {e}")
 
     return holdings
 
-
-# === Historie schreiben (Preise in EUR) ===
+# === Historie schreiben (Preise in EUR, pro Tag) ===
 def log_history() -> None:
     """
     Speichert tagesaktuelle EUR-Preise pro Coin in history.json.
@@ -105,39 +100,50 @@ def log_history() -> None:
     # Map {coin: eur_price}
     log_entry = {item["coin"]: float(item["price"]) for item in holdings}
 
-    # Datum in UTC (nur Datumsteil). Wenn du Berlin-Zone willst, kann ich umstellen.
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Datum in Europe/Berlin (passt zu live_logger)
+    today = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
 
     try:
+        data = {}
         if os.path.exists(HISTORY_FILE):
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if not isinstance(data, dict):
+                try:
+                    data = json.load(f)
+                    if not isinstance(data, dict):
+                        data = {}
+                except Exception:
                     data = {}
-        else:
-            data = {}
 
-        data[today] = log_entry
+        # merge/aktualisieren
+        day_map = data.get(today, {})
+        if not isinstance(day_map, dict):
+            day_map = {}
+        day_map.update(log_entry)
+        data[today] = day_map
 
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-        print(f"[{today}] Historie erfolgreich gespeichert.")
+        print(f"[trading] History gespeichert für {today} ({len(log_entry)} Coins).")
     except Exception as e:
         print(f"[trading] Fehler beim Speichern der {HISTORY_FILE}: {e}")
 
-
 # === Profit-Schätzung (gegen letzten History-Tag) ===
-# === FIX: Profit-Schätzung basierend auf history.json = { 'YYYY-MM-DD': {COIN: price_eur, ...}, ... }
 def get_profit_estimates():
     """
-    Vergleicht heutige EUR-Preise (aus get_portfolio) mit den letzten gespeicherten Tagespreisen aus history.json.
-    Gibt Liste zurück: [{coin, old, current, percent, profit}]
+    Vergleicht aktuelle EUR-Preise aus get_portfolio() mit den zuletzt gespeicherten
+    Tagespreisen aus history.json (Format siehe oben).
+    Rückgabe: [{coin, old, current, percent, profit}]
     """
     try:
         # History laden (Dict mit Tages-Keys)
-        with open("history.json", "r", encoding="utf-8") as f:
+        if not os.path.exists(HISTORY_FILE):
+            print(f"[trading] {HISTORY_FILE} nicht gefunden.")
+            return []
+
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             history = json.load(f)
+
         if not isinstance(history, dict) or not history:
             print("[trading] History leer oder falsches Format.")
             return []
@@ -150,15 +156,21 @@ def get_profit_estimates():
             print("[trading] Keine alten Tagespreise gefunden.")
             return []
 
-        # aktuelles Portfolio (mit EUR-Preis/Value)
+        # aktuelles Portfolio (EUR)
         current = get_portfolio() or []
         results = []
 
-        for coin in current:
-            symbol = coin.get('coin')
-            current_price = float(coin.get('price', 0))  # EUR
+        for pos in current:
+            symbol = pos.get('coin')
+            amount = float(pos.get('amount', 0.0))
+            current_price = float(pos.get('price', 0.0))  # EUR
+
+            if not symbol or amount <= 0 or current_price <= 0:
+                continue
+
             old_price = old_prices_map.get(symbol)
-            if symbol is None or current_price <= 0 or old_price is None or old_price == 0:
+            if old_price is None or old_price == 0:
+                # kein alter Preis -> überspringen
                 continue
 
             try:
@@ -167,79 +179,14 @@ def get_profit_estimates():
                 continue
 
             percent = ((current_price - old_price) / old_price) * 100.0
-            profit_abs = float(coin.get('amount', 0)) * (current_price - old_price)
+            profit_abs = round(amount * (current_price - old_price), 2)
 
             results.append({
                 "coin": symbol,
                 "old": round(old_price, 6),
                 "current": round(current_price, 6),
                 "percent": round(percent, 2),
-                "profit": round(profit_abs, 2)
-            })
-
-        return results
-
-    except Exception as e:
-        print(f"[ProfitEstimate] Fehler: {e}")
-        return []
-    """
-    try:
-        # History laden
-        if not os.path.exists(HISTORY_FILE):
-            print(f"[trading] {HISTORY_FILE} nicht gefunden.")
-            return []
-
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            history = json.load(f)
-
-        if not isinstance(history, dict) or not history:
-            print("[trading] History leer oder falsches Format.")
-            return []
-
-        # Letzten verfügbaren Tag ermitteln
-        last_day = sorted(history.keys())[-1]
-        old_prices = history.get(last_day, {})
-        if not isinstance(old_prices, dict) or not old_prices:
-            print("[trading] Letzter History-Tag hat keine Daten.")
-            return []
-
-        # Aktuelles Portfolio & aktuelle EUR-Preise
-        current_holdings = get_portfolio()
-        if not current_holdings:
-            return []
-
-        results = []
-        for pos in current_holdings:
-            coin = pos.get("coin")
-            amount = float(pos.get("amount", 0.0))
-            current_price = float(pos.get("price", 0.0))  # EUR/Einheit
-
-            if not coin or amount <= 0 or current_price <= 0:
-                continue
-
-            old_price = old_prices.get(coin)
-            if old_price is None or old_price == 0:
-                # Kein alter Preis → für Prozentrechnung überspringen (oder 0 setzen)
-                print(f"[trading] ⚠️ Kein alter Preis für {coin} am {last_day} – überspringe")
-                continue
-
-            try:
-                old_price = float(old_price)
-            except Exception:
-                continue
-
-            percent = ((current_price - old_price) / old_price) * 100.0
-            value_now = round(current_price * amount, 2)
-            profit_abs = round(value_now * (percent / 100.0), 2)
-
-            results.append({
-                "coin": coin,
-                "old": round(old_price, 6),
-                "current": round(current_price, 6),
-                "percent": round(percent, 2),
-                "profit": profit_abs,
-                "amount": amount,
-                "value": value_now
+                "profit": profit_abs
             })
 
         return results
@@ -248,8 +195,7 @@ def get_profit_estimates():
         print(f"[ProfitEstimate] Fehler: {e}")
         return []
 
-
-# === Aktuelle Preise ziehen (USDT-Map; optional nützlich) ===
+# === Aktuelle Preise ziehen (USDT-Map; optional) ===
 def get_current_prices() -> dict:
     """
     Gibt {SYMBOL: USDT-Preis} zurück (z. B. 'BTCUSDT': 63750.0).
@@ -260,7 +206,6 @@ def get_current_prices() -> dict:
     except Exception as e:
         print(f"[trading] Fehler beim Abrufen aktueller Preise: {e}")
         return {}
-
 
 # === Simulierte Trades durchführen (einfaches Demo) ===
 def simulate_trade(decision: dict, balance: float, portfolio: dict, prices: dict) -> dict:
@@ -292,7 +237,4 @@ def simulate_trade(decision: dict, balance: float, portfolio: dict, prices: dict
             balance = round(balance + portfolio[coin] * price_eur, 2)
             portfolio[coin] = 0.0
 
-    return {
-        "balance": round(balance, 2),
-        "portfolio": portfolio
-    }
+    return {"balance": round(balance, 2), "portfolio": portfolio}
