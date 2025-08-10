@@ -1,5 +1,5 @@
 # crawler.py — robust, atomic, UTC timestamps, better fallbacks
-# Stand: 2025-08-10
+# Stand: 2025-08-10 (mit PyTrends-FutureWarning-Fix)
 
 from __future__ import annotations
 import json
@@ -12,6 +12,17 @@ from typing import Any, Dict, List, Optional
 
 import requests
 from pytrends.request import TrendReq
+
+# >>> Warning-Fix: Pandas/pytrends FutureWarning zu fillna downcasting
+import warnings
+import pandas as pd
+pd.set_option('future.no_silent_downcasting', True)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*Downcasting object dtype arrays on .*fillna.*",
+    category=FutureWarning,
+    module=r"pytrends\..*",
+)
 
 # === ENV / API KEYS ===
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "").strip()
@@ -68,6 +79,13 @@ def fetch_google_trends(keywords: List[str] | None = None) -> Dict[str, int]:
         pytrends = TrendReq(hl="de", tz=360)  # Berlin ~ UTC+1/2
         pytrends.build_payload(keywords, cat=0, timeframe="now 1-d")
         data = pytrends.interest_over_time()
+
+        # (Optional) defensive: Datentyp sauber halten
+        try:
+            data = data.infer_objects(copy=False)
+        except Exception:
+            pass
+
         out: Dict[str, int] = {}
         for k in keywords:
             try:
