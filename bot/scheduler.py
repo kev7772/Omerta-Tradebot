@@ -1,5 +1,7 @@
 # scheduler.py — clean, stable, DST-safe (Europe/Berlin) + Live-Logger v2 integriert
 
+from __future__ import annotations
+
 import schedule
 import time
 import os
@@ -36,6 +38,7 @@ try:
 except Exception:
     Client = None
 
+
 # ---------- Helper ----------
 def _send(msg, **kwargs):
     if bot and ADMIN_ID:
@@ -43,6 +46,7 @@ def _send(msg, **kwargs):
             bot.send_message(ADMIN_ID, msg, **kwargs)
         except Exception as e:
             print(f"[Telegram] Sendefehler: {e}")
+
 
 def _job(name, fn):
     try:
@@ -52,10 +56,13 @@ def _job(name, fn):
         _send(f"⚠️ {name} Fehler: {e}")
         return None
 
+
 def _schedule_daily_berlin(hour: int, minute: int, fn, tag: str | None = None):
     """
     Plant einen Job für eine Berlin-Uhrzeit (DST-sicher), indem die Zeit in UTC
     umgerechnet und mit schedule.every().day.at(UTC) registriert wird.
+    Achtung: schedule nutzt die lokale Systemzeit. Railway läuft i. d. R. in UTC,
+    daher registrieren wir die UTC-Zeit explizit.
     """
     utc = ZoneInfo("UTC")
     berlin = ZoneInfo("Europe/Berlin")
@@ -77,8 +84,9 @@ def _schedule_daily_berlin(hour: int, minute: int, fn, tag: str | None = None):
     print(f"[Scheduler] {fn.__name__} {hour:02d}:{minute:02d} Berlin -> {utc_time_str} UTC (next: {job.next_run})")
     return job
 
+
 # ---------- Live-Logger Jobs ----------
-def log_snapshot_from_binance(symbols=("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT")) -> int:
+def log_snapshot_from_binance(symbols=("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")) -> int:
     """
     Holt Preise direkt von Binance und schreibt sie in history.json.
     """
@@ -109,16 +117,22 @@ def log_snapshot_from_binance(symbols=("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","
         print(f"[Logger] Binance Snapshot Fehler: {e}")
         return 0
 
+
 def log_snapshot_from_estimates() -> int:
     """
     Baut prices_input aus get_profit_estimates(), loggt nur Einträge mit echtem 'price'.
+    Akzeptiert sowohl 'price' als auch 'current' (EUR) aus trading.get_profit_estimates().
     """
     try:
         estimates = get_profit_estimates() or []
         prices_input = []
         for e in estimates:
             coin = e.get("coin")
-            price = e.get("price")
+            price = e.get("current", e.get("price"))
+            try:
+                price = float(price)
+            except Exception:
+                price = None
             if coin and isinstance(price, (int, float)):
                 prices_input.append({"coin": str(coin), "price": float(price)})
         if not prices_input:
@@ -129,9 +143,11 @@ def log_snapshot_from_estimates() -> int:
         print(f"[Logger] Estimates Snapshot Fehler: {e}")
         return 0
 
+
 def prune_history(max_entries: int = 200_000, backup_path: str = "history_backup.json") -> None:
     """
     Hält history.json schlank (Auto-Rotation) und legt ein Backup ab.
+    Erwartet, dass live_logger eine LISTE von Snapshots speichert.
     """
     try:
         data = load_history_safe()
@@ -152,6 +168,7 @@ def prune_history(max_entries: int = 200_000, backup_path: str = "history_backup
     except Exception as e:
         print(f"[Logger] Prune-Fehler: {e}")
 
+
 # ---------- Business Jobs ----------
 def send_autostatus():
     try:
@@ -164,12 +181,15 @@ def send_autostatus():
             msg += f"{h.get('coin')}: {h.get('amount')} → {h.get('value')} €\n"
 
         msg += "\n💰 Gewinne:\n"
-        for p in profits:
-            msg += f"{p.get('coin')}: {p.get('profit')} € ({p.get('percent')}%)\n"
+        if profits:
+            for p in profits:
+                msg += f"{p.get('coin')}: {p.get('profit')} € ({p.get('percent')}%)\n"
+        else:
+            msg += "—\n"
 
         msg += f"\n📡 Sentiment: {str(sentiment.get('sentiment','')).upper()} ({sentiment.get('score',0)})"
 
-        # Lernzahlen
+        # Lernzahlen (leichtgewichtig)
         try:
             open_cnt = 0
             learned_cnt = 0
@@ -186,6 +206,7 @@ def send_autostatus():
         _send(msg)
     except Exception as e:
         _send(f"❌ Fehler bei Autostatus: {e}")
+
 
 def learn_job():
     before = 0
@@ -209,6 +230,7 @@ def learn_job():
     processed = max(0, before - after)
     if processed > 0:
         _send(f"🧠 Auto-Learn: {processed} Entscheidung(en) bewertet.")
+
 
 # ---------- Zeitplan ----------
 def run_scheduler():
@@ -234,7 +256,7 @@ def run_scheduler():
 
     print("✅ Scheduler gestartet und alle Tasks geladen.")
 
-    # Sofortläufe beim Start (optional)
+    # Sofortläufe beim Start (optional, non-blocking)
     try:
         learn_job()
         send_autostatus()
@@ -250,6 +272,7 @@ def run_scheduler():
             print(f"[Scheduler] run_pending Fehler: {e}")
             _send(f"⚠️ Scheduler-Fehler: {e}")
         time.sleep(1)
+
 
 # ---------- Status für /schedulerstatus ----------
 def get_scheduler_status():
