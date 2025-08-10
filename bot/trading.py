@@ -128,20 +128,60 @@ def log_history() -> None:
 
 
 # === Profit-Schätzung (gegen letzten History-Tag) ===
-def get_profit_estimates() -> list:
+# === FIX: Profit-Schätzung basierend auf history.json = { 'YYYY-MM-DD': {COIN: price_eur, ...}, ... }
+def get_profit_estimates():
     """
-    Vergleicht aktuelle EUR-Preise mit dem letzten gespeicherten Tag in history.json.
-    Rückgabe-Liste pro Coin:
-    {
-      "coin": "BTC",
-      "old": 25000.0,
-      "current": 26250.0,
-      "percent": 5.0,
-      "profit": 123.45,     # grob auf Basis aktueller Bestände (value * Prozent)
-      "amount": 0.1234,
-      "value": 3234.56      # aktueller EUR-Gesamtwert der Position
-    }
-    Mindestens gebraucht von deiner logic.py: "coin", "percent".
+    Vergleicht heutige EUR-Preise (aus get_portfolio) mit den letzten gespeicherten Tagespreisen aus history.json.
+    Gibt Liste zurück: [{coin, old, current, percent, profit}]
+    """
+    try:
+        # History laden (Dict mit Tages-Keys)
+        with open("history.json", "r", encoding="utf-8") as f:
+            history = json.load(f)
+        if not isinstance(history, dict) or not history:
+            print("[trading] History leer oder falsches Format.")
+            return []
+
+        # letzten Tag ermitteln
+        days = sorted(history.keys())
+        last_day = days[-1]
+        old_prices_map = history.get(last_day, {})
+        if not isinstance(old_prices_map, dict) or not old_prices_map:
+            print("[trading] Keine alten Tagespreise gefunden.")
+            return []
+
+        # aktuelles Portfolio (mit EUR-Preis/Value)
+        current = get_portfolio() or []
+        results = []
+
+        for coin in current:
+            symbol = coin.get('coin')
+            current_price = float(coin.get('price', 0))  # EUR
+            old_price = old_prices_map.get(symbol)
+            if symbol is None or current_price <= 0 or old_price is None or old_price == 0:
+                continue
+
+            try:
+                old_price = float(old_price)
+            except Exception:
+                continue
+
+            percent = ((current_price - old_price) / old_price) * 100.0
+            profit_abs = float(coin.get('amount', 0)) * (current_price - old_price)
+
+            results.append({
+                "coin": symbol,
+                "old": round(old_price, 6),
+                "current": round(current_price, 6),
+                "percent": round(percent, 2),
+                "profit": round(profit_abs, 2)
+            })
+
+        return results
+
+    except Exception as e:
+        print(f"[ProfitEstimate] Fehler: {e}")
+        return []
     """
     try:
         # History laden
