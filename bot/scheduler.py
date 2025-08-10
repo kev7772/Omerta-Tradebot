@@ -165,27 +165,38 @@ def _prune_json_list(file_path: str, max_entries: int) -> None:
         print(f"[Prune] Fehler bei {file_path}: {e}")
 
 
-def prune_history(max_entries: int = 200_000, backup_path: str = "history_backup.json") -> None:
+def prune_history(max_days: int = 120, backup_path: str = "history_backup.json") -> None:
     """
-    Hält history.json schlank (Auto-Rotation) und legt ein Backup ab.
-    Erwartet, dass live_logger eine LISTE von Snapshots speichert.
+    Pruned history.json im Format { 'YYYY-MM-DD': {...}, ... } auf die letzten `max_days`.
+    Legt ein Backup der letzten max_days Tage ab.
     """
     try:
-        data = load_history_safe()
-        if not isinstance(data, list) or not data:
+        if not os.path.exists("history.json"):
             return
-        # Backup (leichtgewichtig)
+        with open("history.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not data:
+            return
+
+        # Keys sind Tages-Strings; nach Datum sortieren und trimmen
+        keys_sorted = sorted(data.keys())
+        if len(keys_sorted) <= max_days:
+            return
+
+        keep_keys = keys_sorted[-max_days:]
+        pruned = {k: data[k] for k in keep_keys}
+
+        # Backup (nur die behaltenen Tage)
         try:
-            with open(backup_path, "w", encoding="utf-8") as f:
-                json.dump(data[-max_entries:], f, ensure_ascii=False, indent=2)
+            with open(backup_path, "w", encoding="utf-8") as bf:
+                json.dump(pruned, bf, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[Logger] Backup-Fehler: {e}")
-        # Prune
-        if len(data) > max_entries:
-            cut = data[-max_entries:]
-            with open("history.json", "w", encoding="utf-8") as f:
-                json.dump(cut, f, ensure_ascii=False, indent=2)
-            print(f"[Logger] History auf {max_entries} Einträge gekürzt.")
+
+        with open("history.json", "w", encoding="utf-8") as f:
+            json.dump(pruned, f, ensure_ascii=False, indent=2)
+
+        print(f"[Logger] History auf {len(keep_keys)} Tage gekürzt (max={max_days}).")
     except Exception as e:
         print(f"[Logger] Prune-Fehler: {e}")
 
