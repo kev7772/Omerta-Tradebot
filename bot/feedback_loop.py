@@ -13,7 +13,7 @@ HISTORY_FILE = "history.json"
 LEARNING_LOG_FILE = "learning_log.json"
 
 # Konfiguration
-DEFAULT_HORIZON_DAYS = 3
+DEFAULT_HORIZON_DAYS = 1
 TOLERANCE_HOURS_BASELINE = 24    # wie weit um die Entscheidungszeit dürfen wir den Einstiegspreis suchen
 TOLERANCE_HOURS_TARGET = 24      # wie weit um die Zielzeit (decision+horizon) dürfen wir den Zielpreis suchen
 
