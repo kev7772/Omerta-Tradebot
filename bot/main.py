@@ -1,4 +1,4 @@
-# main.py — OmertaTradeBot (merged)
+# main.py — OmertaTradeBot (clean + live_logger integriert)
 # Stand: 2025-08-10
 
 import os
@@ -8,10 +8,16 @@ import telebot
 from flask import Flask, request
 from datetime import datetime
 
+# === Imports aus deinem Projekt ===
 from scheduler import run_scheduler, get_scheduler_status
-from live_logger import write_history
+from live_logger import write_history, load_history_safe
 from simulator import run_simulation, run_live_simulation
-from logic import recommend_trades, should_trigger_panic, make_trade_decision, get_learning_log
+from logic import (
+    recommend_trades,
+    should_trigger_panic,
+    make_trade_decision,
+    get_learning_log
+)
 from sentiment_parser import get_sentiment_data
 from indicators import calculate_indicators
 from binance.client import Client
@@ -19,8 +25,13 @@ from trading import get_portfolio, get_profit_estimates
 from decision_logger import log_trade_decisions
 from feedback_loop import run_feedback_loop
 from visualize_learning import generate_heatmap
-from ghost_mode import run_ghost_mode, run_ghost_analysis, check_ghost_exit, get_ghost_performance_ranking
-from crawler import run_crawler, get_crawler_data   # <— HIER importieren (kein Import in crawler.py zurück!)
+from ghost_mode import (
+    run_ghost_mode,
+    run_ghost_analysis,
+    check_ghost_exit,
+    get_ghost_performance_ranking
+)
+from crawler import run_crawler, get_crawler_data   # <— wichtig: nur hier importieren
 
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -32,12 +43,12 @@ ADMIN_ID = int(ADMIN_ID)
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# === Flask Webhook ===
+# === Flask Webhook (wie in deiner alten Main) ===
 @app.route('/')
 def index():
     return 'OmertaTradeBot Webhook aktiv'
 
-# Webhook-Endpunkt wie in deiner alten Datei: https://<dein-host>/{BOT_TOKEN}
+# Webhook-Endpunkt bleibt /{BOT_TOKEN}
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -48,7 +59,6 @@ def webhook():
 
 # === Helper ===
 def is_admin(message):
-    # Kompatibel zu deiner alten Prüfung (chat.id == ADMIN_ID)
     try:
         return message.chat and message.chat.id == ADMIN_ID
     except Exception:
@@ -60,7 +70,45 @@ def safe_send(chat_id, text, **kwargs):
     except Exception as e:
         print(f"[Telegram] Fehler: {e}")
 
-# === Commands ===
+# ========= Live-Logger Helpers (neu) =========
+def log_market_snapshot_from_estimates():
+    """
+    Baut prices_input aus get_profit_estimates().
+    Erwartet Einträge wie {"coin":"BTC","price":...}. Falls kein 'price' vorhanden,
+    wird der Coin ignoriert (wir loggen nur echte Preise).
+    """
+    estimates = get_profit_estimates() or []
+    prices_input = []
+    for e in estimates:
+        coin = e.get("coin")
+        price = e.get("price")
+        if coin and isinstance(price, (int, float)):
+            prices_input.append({"coin": str(coin), "price": float(price)})
+
+    if not prices_input:
+        print("[Logger] Keine validen Preise in get_profit_estimates() gefunden.")
+        return 0
+
+    return write_history(prices_input)
+
+def log_market_snapshot_from_binance(symbols=("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT")):
+    """
+    Holt Spot-Preise direkt von Binance und schreibt sie in die history.json.
+    """
+    try:
+        client = Client(os.getenv("BINANCE_API_KEY"), os.getenv("BINANCE_API_SECRET"))
+        prices_input = []
+        for sym in symbols:
+            t = client.get_symbol_ticker(symbol=sym)
+            coin = sym.replace("USDT", "")
+            price = float(t["price"])
+            prices_input.append({"coin": coin, "price": price})
+        return write_history(prices_input)
+    except Exception as e:
+        print(f"[Logger] Binance Snapshot Fehler: {e}")
+        return 0
+
+# ========= Commands =========
 
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
@@ -102,6 +150,10 @@ def cmd_commands(message):
 /ghoststatus — Überwacht Ghost Exits
 /ghostranking — Top Coins im Ghost-Modus
 /ghostexit — (Alias) Exit-Check
+
+📝 *Logging*
+/logsnapshot — Markt-Snapshot aus Estimates loggen
+/logbinance — Markt-Snapshot direkt von Binance loggen
 """
     safe_send(message.chat.id, text, parse_mode="Markdown")
 
@@ -173,12 +225,10 @@ def cmd_tradelogic(message):
     if not is_admin(message): return
     try:
         logic = make_trade_decision() or []
-        # Falls dict, schön formatiert senden:
         if isinstance(logic, dict):
             safe_send(message.chat.id, "🧠 Entscheidung:\n" + json.dumps(logic, ensure_ascii=False, indent=2))
         else:
             safe_send(message.chat.id, "🧠 Entscheidung:\n" + "\n".join(logic))
-        # Log schreiben, wenn vorhanden
         try:
             log_trade_decisions(logic)
         except Exception:
@@ -190,7 +240,6 @@ def cmd_tradelogic(message):
 def cmd_panic(message):
     if not is_admin(message): return
     try:
-        # Deine alte Signatur: should_trigger_panic() -> (panic_bool, coin)
         res = should_trigger_panic()
         if isinstance(res, tuple) and len(res) >= 2:
             panic, coin = res[0], res[1]
@@ -256,7 +305,6 @@ def cmd_learninglog(message):
     if not is_admin(message): return
     try:
         log = get_learning_log()
-        # Wenn dict/list → schön formatiert
         if isinstance(log, (dict, list)):
             safe_send(message.chat.id, json.dumps(log, ensure_ascii=False, indent=2))
         else:
@@ -321,7 +369,6 @@ def cmd_ghostranking(message):
 
 @bot.message_handler(commands=['ghostexit'])
 def cmd_ghostexit(message):
-    # Alias, weil du oft Exit extra prüfen willst
     if not is_admin(message): return
     try:
         exits = check_ghost_exit() or []
@@ -373,7 +420,6 @@ def cmd_schedulerstatus(message):
     if not is_admin(message): return
     try:
         status = get_scheduler_status()
-        # Falls dict → formatiert schicken
         if isinstance(status, dict):
             safe_send(message.chat.id, json.dumps(status, ensure_ascii=False, indent=2))
         else:
@@ -399,6 +445,25 @@ def cmd_autostatus(message):
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /autostatus: {e}")
 
+# === Logging Commands (neu) ===
+@bot.message_handler(commands=['logsnapshot'])
+def cmd_logsnap(message):
+    if not is_admin(message): return
+    try:
+        n = log_market_snapshot_from_estimates()
+        safe_send(message.chat.id, f"📝 Snapshot geloggt: {n} Einträge.")
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /logsnapshot: {e}")
+
+@bot.message_handler(commands=['logbinance'])
+def cmd_logbinance(message):
+    if not is_admin(message): return
+    try:
+        n = log_market_snapshot_from_binance()
+        safe_send(message.chat.id, f"📝 Binance-Snapshot geloggt: {n} Einträge.")
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /logbinance: {e}")
+
 # === Startup Tasks (asynchron) ===
 def startup_tasks():
     # Dateien anlegen, falls nicht vorhanden
@@ -407,7 +472,7 @@ def startup_tasks():
             "history.json": [],
             "ghost_log.json": [],
             "learning_log.json": [],
-            "crawler_data.json": {}   # hier Dict sinnvoller
+            "crawler_data.json": {}   # für Crawler strukturierter
         }
         for path, default in ensure_files.items():
             if not os.path.exists(path):
@@ -416,12 +481,20 @@ def startup_tasks():
     except Exception as e:
         print(f"[Startup] Datei-Init Fehler: {e}")
 
-    # Initiale Tasks (wie in deiner alten Datei angedeutet)
+    # Initiale Logs/Analysen
+    wrote = 0
     try:
-        write_history()
+        wrote = log_market_snapshot_from_estimates() or 0
     except Exception as e:
-        print(f"[Startup] write_history Fehler: {e}")
+        print(f"[Startup] Estimates Snapshot Fehler: {e}")
 
+    if wrote == 0:
+        try:
+            log_market_snapshot_from_binance()
+        except Exception as e:
+            print(f"[Startup] Binance Snapshot Fehler: {e}")
+
+    # Restliche Startprozesse
     try:
         run_simulation()
     except Exception as e:
