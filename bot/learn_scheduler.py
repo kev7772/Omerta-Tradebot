@@ -16,7 +16,7 @@ except Exception:
 
 DECISION_LOG = "decision_log.json"
 LEARNING_LOG = "learning_log.json"
-EVAL_DELAY_DAYS = 3          # nach X Tagen bewerten
+EVAL_DELAY_DAYS = 1          # nach X Tagen bewerten
 MAX_RETRY = 7                # max. erneute Versuche, wenn Daten fehlen
 
 # ---------------------------
