@@ -19,6 +19,7 @@ from logic import (
     make_trade_decision,
     get_learning_log
 )
+from bootstrap_learning import bootstrap_learning_if_empty
 from sentiment_parser import get_sentiment_data
 from indicators import calculate_indicators
 from binance.client import Client
@@ -594,3 +595,10 @@ if __name__ == '__main__':
     # Flask starten (Webhook-Modus)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
+    # --- Lernlog automatisch füttern, falls leer ---
+    try:
+        msg = bootstrap_learning_if_empty(target_min_entries=30, max_cycles=5)
+        print("[Startup]", msg)
+    except Exception as e:
+        print(f"[Startup] Bootstrap Learning Fehler: {e}")
