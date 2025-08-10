@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from telebot import TeleBot
+from bootstrap_learning import ensure_min_learning_entries
 
 # === Bot Setup (defensiv) ===
 BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
@@ -243,6 +244,8 @@ def run_scheduler():
 
     # --- Lernen & Checks ---
     schedule.every(1).hours.do(learn_job)
+    # --- Lernlog nachfüttern, falls zu wenig Daten vorhanden ---
+    schedule.every(6).hours.do(lambda: _job("Learning-Nachfuellen", lambda: ensure_min_learning_entries(min_entries=100, max_cycles=6)))
 
     # --- Täglich zu Berlin-Zeiten (DST-sicher) ---
     _schedule_daily_berlin(8, 0,  send_autostatus,       tag="autostatus")
