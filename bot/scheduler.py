@@ -1,4 +1,4 @@
-# scheduler.py — clean, stable, DST-safe (Europe/Berlin)
+# scheduler.py — clean, stable, DST-safe (Europe/Berlin) + Live-Logger v2 integriert
 
 import schedule
 import time
@@ -21,7 +21,7 @@ bot = TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 # === Imports für geplante Tasks ===
 from trading import get_portfolio, get_profit_estimates
 from sentiment_parser import get_sentiment_data
-from live_logger import write_history
+from live_logger import write_history, load_history_safe
 from feedback_loop import run_feedback_loop
 from error_pattern_analyzer import analyze_errors
 from simulator import run_simulation
@@ -29,6 +29,12 @@ from crawler import run_crawler
 from crawler_alert import detect_hype_signals
 from ghost_mode import run_ghost_mode, check_ghost_exit
 from learn_scheduler import evaluate_pending_learnings  # Auto-Learn integriert
+
+# Optional für Binance-Snapshots
+try:
+    from binance.client import Client
+except Exception:
+    Client = None
 
 # ---------- Helper ----------
 def _send(msg, **kwargs):
@@ -71,7 +77,82 @@ def _schedule_daily_berlin(hour: int, minute: int, fn, tag: str | None = None):
     print(f"[Scheduler] {fn.__name__} {hour:02d}:{minute:02d} Berlin -> {utc_time_str} UTC (next: {job.next_run})")
     return job
 
-# ---------- Jobs ----------
+# ---------- Live-Logger Jobs ----------
+def log_snapshot_from_binance(symbols=("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT")) -> int:
+    """
+    Holt Preise direkt von Binance und schreibt sie in history.json.
+    """
+    if Client is None:
+        print("[Logger] Binance-Client nicht verfügbar.")
+        return 0
+    try:
+        api = os.getenv("BINANCE_API_KEY")
+        sec = os.getenv("BINANCE_API_SECRET")
+        if not api or not sec:
+            print("[Logger] BINANCE_API_KEY/SECRET fehlen — überspringe Binance-Snapshot.")
+            return 0
+        client = Client(api, sec)
+        prices_input = []
+        for sym in symbols:
+            try:
+                t = client.get_symbol_ticker(symbol=sym)
+                coin = sym.replace("USDT", "")
+                price = float(t["price"])
+                prices_input.append({"coin": coin, "price": price})
+            except Exception as e:
+                print(f"[Logger] Symbol {sym} Fehler: {e}")
+        if not prices_input:
+            return 0
+        n = write_history(prices_input)
+        return n
+    except Exception as e:
+        print(f"[Logger] Binance Snapshot Fehler: {e}")
+        return 0
+
+def log_snapshot_from_estimates() -> int:
+    """
+    Baut prices_input aus get_profit_estimates(), loggt nur Einträge mit echtem 'price'.
+    """
+    try:
+        estimates = get_profit_estimates() or []
+        prices_input = []
+        for e in estimates:
+            coin = e.get("coin")
+            price = e.get("price")
+            if coin and isinstance(price, (int, float)):
+                prices_input.append({"coin": str(coin), "price": float(price)})
+        if not prices_input:
+            print("[Logger] Keine validen Preise in get_profit_estimates() gefunden.")
+            return 0
+        return write_history(prices_input)
+    except Exception as e:
+        print(f"[Logger] Estimates Snapshot Fehler: {e}")
+        return 0
+
+def prune_history(max_entries: int = 200_000, backup_path: str = "history_backup.json") -> None:
+    """
+    Hält history.json schlank (Auto-Rotation) und legt ein Backup ab.
+    """
+    try:
+        data = load_history_safe()
+        if not isinstance(data, list) or not data:
+            return
+        # Backup (leichtgewichtig)
+        try:
+            with open(backup_path, "w", encoding="utf-8") as f:
+                json.dump(data[-max_entries:], f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Logger] Backup-Fehler: {e}")
+        # Prune
+        if len(data) > max_entries:
+            cut = data[-max_entries:]
+            with open("history.json", "w", encoding="utf-8") as f:
+                json.dump(cut, f, ensure_ascii=False, indent=2)
+            print(f"[Logger] History auf {max_entries} Einträge gekürzt.")
+    except Exception as e:
+        print(f"[Logger] Prune-Fehler: {e}")
+
+# ---------- Business Jobs ----------
 def send_autostatus():
     try:
         portfolio = get_portfolio() or []
@@ -133,11 +214,15 @@ def learn_job():
 def run_scheduler():
     print("⏰ Omerta Scheduler läuft...")
 
-    # Stündlich
-    schedule.every(1).hours.do(lambda: _job("Logger", write_history))
+    # --- Live-Logger v2 ---
+    schedule.every(1).hours.do(lambda: _job("Logger (Binance)", log_snapshot_from_binance))
+    schedule.every(3).hours.do(lambda: _job("Logger (Estimates)", log_snapshot_from_estimates))
+    _schedule_daily_berlin(3, 15, lambda: _job("Logger (Prune+Backup)", prune_history), tag="logger_maintenance")
+
+    # --- Lernen & Checks ---
     schedule.every(1).hours.do(learn_job)
 
-    # Täglich zu Berlin-Zeiten (DST-sicher)
+    # --- Täglich zu Berlin-Zeiten (DST-sicher) ---
     _schedule_daily_berlin(8, 0,  send_autostatus,       tag="autostatus")
     _schedule_daily_berlin(9, 0,  lambda: _job("FeedbackLoop", run_feedback_loop))
     _schedule_daily_berlin(10, 0, lambda: _job("ErrorAnalysis", analyze_errors))
@@ -154,6 +239,7 @@ def run_scheduler():
         learn_job()
         send_autostatus()
         _job("Crawler (Initial)", run_crawler)
+        _job("Logger (Init Binance)", log_snapshot_from_binance)
     except Exception as e:
         print(f"[Scheduler] Fehler bei Initialläufen: {e}")
 
