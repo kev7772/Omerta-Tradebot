@@ -1,5 +1,5 @@
 # error_pattern_analyzer.py — robuste Fehlermuster-Analyse für Simulationen
-# Stand: 2025-08-10
+# Stand: 2025-08-11
 
 from __future__ import annotations
 import json
@@ -8,9 +8,10 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-LOGFILE = "simulation_log.json"
+# Unterstütze mehrere potenzielle Dateinamen
+LOGFILES = ("log_simulation.json", "simulation_log.json")
 
-# ---- Normalizer ----
+# ---- Helpers ----
 def _parse_iso(ts: Any) -> Optional[datetime]:
     if not isinstance(ts, str):
         return None
@@ -21,36 +22,24 @@ def _parse_iso(ts: Any) -> Optional[datetime]:
 
 def _norm_decision(val: Any) -> str:
     s = str(val or "").strip().lower()
-    # deutsch → englisch mappen
     mapping = {
-        "gekauft": "buy",
-        "kauf": "buy",
-        "verkauft": "sell",
-        "verkauf": "sell",
-        "gehalten": "hold",
-        "halte": "hold",
+        "gekauft": "buy", "kauf": "buy",
+        "verkauft": "sell", "verkauf": "sell",
+        "gehalten": "hold", "halte": "hold",
     }
     return mapping.get(s, s if s in ("buy", "sell", "hold") else "")
 
 def _norm_success(x: Any) -> float:
-    """
-    Normalisiert Erfolg/Performance auf Prozent-Basis:
-    - bool True/False → 100 / 0
-    - -1..1 → *100 (Anteil)
-    - sonst direkt als Prozent interpretiert, auf [-1000, 1000] begrenzt
-    """
+    """Normalisiert Erfolg/Performance auf Prozentbasis."""
     try:
         if isinstance(x, bool):
-            return 100.0 if x else -100.0  # bool als klarer Win/Loss
+            return 100.0 if x else -100.0
         v = float(x)
     except Exception:
         return 0.0
     if -1.0 <= v <= 1.0:
         v *= 100.0
-    # clamp
-    if v > 1000: v = 1000.0
-    if v < -1000: v = -1000.0
-    return v
+    return max(min(v, 1000.0), -1000.0)
 
 def _load_json(path: str) -> List[Dict[str, Any]]:
     if not os.path.exists(path):
@@ -62,66 +51,87 @@ def _load_json(path: str) -> List[Dict[str, Any]]:
     except Exception:
         return []
 
+def _load_logs() -> List[Dict[str, Any]]:
+    """Lädt Logs aus allen bekannten Dateinamen und merged sie."""
+    rows: List[Dict[str, Any]] = []
+    seen = set()
+    for p in LOGFILES:
+        for e in _load_json(p):
+            # Duplikate grob vermeiden (coin+timestamp)
+            key = (str(e.get("coin")).upper(), str(e.get("timestamp") or e.get("date")))
+            if key not in seen:
+                rows.append(e)
+                seen.add(key)
+    return rows
+
 # ---- Kernanalyse ----
 def analyze_errors_struct(
-    logfile: str = LOGFILE,
     *,
+    logfile: Optional[str] = None,
     window_days: Optional[int] = None,
     min_errors_threshold: int = 2,
     min_attempts_per_coin: int = 1,
     fail_success_cutoff_pct: float = 0.0,
 ) -> Dict[str, Any]:
     """
-    Liefert strukturierte Analyse:
-      - window_days: optionaler Zeitraum (z. B. 30 → letzte 30 Tage)
-      - min_errors_threshold: ab wie vielen Fehlern Coin als auffällig gilt
-      - min_attempts_per_coin: erst ab n Versuchen bewerten
-      - fail_success_cutoff_pct: <0 => Fehler, z. B. 0.0 (negativ), -5.0 (unter -5%)
+    Strukturierte Analyse der Fehlmuster.
+    Gibt IMMER die Keys: ok, found, offenders, coins, params zurück.
     """
-    rows = _load_json(logfile)
-    if not rows:
-        return {"ok": True, "found": False, "summary": "Keine Simulationsdaten.", "coins": {}}
+    rows = _load_json(logfile) if logfile else _load_logs()
 
-    # ggf. Zeitraum filtern
+    params = {
+        "window_days": window_days,
+        "min_errors_threshold": min_errors_threshold,
+        "min_attempts_per_coin": min_attempts_per_coin,
+        "fail_success_cutoff_pct": fail_success_cutoff_pct,
+        "source": logfile or ",".join(LOGFILES),
+    }
+
+    if not rows:
+        return {
+            "ok": True,
+            "found": False,
+            "offenders": [],
+            "coins": {},
+            "summary": "Keine Simulationsdaten.",
+            "params": params,
+        }
+
+    # Zeitraumfilter (optional)
     if window_days and window_days > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
         tmp = []
         for e in rows:
-            ts = e.get("timestamp") or e.get("date")  # akzeptiere beides
+            ts = e.get("timestamp") or e.get("date")
             dt = _parse_iso(ts) if isinstance(ts, str) else None
-            if dt is None:
-                # wenn kein Datum vorhanden, nicht filtern
-                tmp.append(e)
-            elif dt >= cutoff:
+            if dt is None or dt >= cutoff:
                 tmp.append(e)
         rows = tmp
 
-    stats = defaultdict(lambda: {"count": 0, "fails": 0, "by_action": {"buy": {"c":0,"f":0}, "sell":{"c":0,"f":0}, "hold":{"c":0,"f":0}}})
+    stats = defaultdict(lambda: {
+        "count": 0, "fails": 0,
+        "by_action": {"buy": {"c":0,"f":0}, "sell":{"c":0,"f":0}, "hold":{"c":0,"f":0}}
+    })
 
     for e in rows:
         coin = str(e.get("coin", "???")).upper()
         decision = _norm_decision(e.get("entscheidung") or e.get("decision"))
-        success_raw = e.get("success")
-        # manche Logs nutzen andere Felder wie "pnl" oder "result"
-        if success_raw is None:
-            success_raw = e.get("pnl") or e.get("performance") or e.get("return")
-
+        success_raw = e.get("success", e.get("pnl", e.get("performance", e.get("return"))))
         success_pct = _norm_success(success_raw)
 
-        stats[coin]["count"] += 1
+        s = stats[coin]
+        s["count"] += 1
         if decision in ("buy", "sell", "hold"):
-            stats[coin]["by_action"][decision]["c"] += 1
+            s["by_action"][decision]["c"] += 1
 
-        # Fehlerregel: success_pct < cutoff → Fehler
-        is_fail = success_pct < float(fail_success_cutoff_pct)
-        if is_fail:
-            stats[coin]["fails"] += 1
+        if success_pct < float(fail_success_cutoff_pct):
+            s["fails"] += 1
             if decision in ("buy", "sell", "hold"):
-                stats[coin]["by_action"][decision]["f"] += 1
+                s["by_action"][decision]["f"] += 1
 
-    # Ergebnis aufbereiten
     coins_out: Dict[str, Any] = {}
-    offenders = []
+    offenders: List[Tuple[str, float, int, int]] = []
+
     for coin, s in stats.items():
         total = s["count"]
         fails = s["fails"]
@@ -131,8 +141,7 @@ def analyze_errors_struct(
 
         by_act = {}
         for act, vv in s["by_action"].items():
-            c = vv["c"]
-            f = vv["f"]
+            c, f = vv["c"], vv["f"]
             by_act[act] = {
                 "attempts": c,
                 "fails": f,
@@ -153,28 +162,21 @@ def analyze_errors_struct(
     return {
         "ok": True,
         "found": bool(offenders),
-        "offenders": offenders,  # Liste von (coin, fail_rate_pct, fails, total)
+        "offenders": offenders,       # Liste von (coin, fail_rate_pct, fails, total)
         "coins": coins_out,
-        "params": {
-            "window_days": window_days,
-            "min_errors_threshold": min_errors_threshold,
-            "min_attempts_per_coin": min_attempts_per_coin,
-            "fail_success_cutoff_pct": fail_success_cutoff_pct,
-        }
+        "params": params,
     }
 
 # ---- String-Ausgabe (für Telegram/Scheduler) ----
 def analyze_errors(
-    logfile: str = LOGFILE,
     *,
+    logfile: Optional[str] = None,
     window_days: Optional[int] = None,
     min_errors_threshold: int = 2,
     min_attempts_per_coin: int = 1,
     fail_success_cutoff_pct: float = 0.0,
 ) -> str:
-    """
-    Erzeugt eine kompakte Textausgabe (Markdown-tauglich).
-    """
+    """Erzeugt kompakte Textausgabe (Markdown-tauglich)."""
     res = analyze_errors_struct(
         logfile=logfile,
         window_days=window_days,
@@ -186,25 +188,24 @@ def analyze_errors(
     if not res.get("ok"):
         return "⚠️ Analyse fehlgeschlagen."
 
-    coins = res["coins"]
-    offenders = res["offenders"]
-    params = res["params"]
+    coins = res.get("coins", {})
+    offenders = res.get("offenders", [])
+    params = res.get("params", {})
 
     if not coins:
         return "⚠️ Noch keine Simulationsdaten vorhanden."
 
     header = "🧠 *Fehlermuster-Analyse*"
     sub = []
-    if params["window_days"]:
+    if params.get("window_days"):
         sub.append(f"(letzte {params['window_days']} Tage)")
-    if params["fail_success_cutoff_pct"] != 0.0:
+    if params.get("fail_success_cutoff_pct", 0.0) != 0.0:
         sub.append(f"(Cutoff {params['fail_success_cutoff_pct']}%)")
     if sub:
         header += " " + " ".join(sub)
 
     out = [header, ""]
 
-    # Auffällige Coins
     if offenders:
         out.append("🔻 *Auffällig (Fehlerquote absteigend):*")
         for coin, rate, fails, total in offenders[:10]:
@@ -212,16 +213,16 @@ def analyze_errors(
     else:
         out.append("✅ Keine auffälligen Fehlmuster erkannt.")
 
-    # Optional: kleine Action-Breakdown für die Top 5 Coins nach Versuchen
-    top = sorted(coins.items(), key=lambda kv: kv[1]["attempts"], reverse=True)[:5]
+    # Breakdown (Top 5 nach Versuchen)
+    top = sorted(coins.items(), key=lambda kv: kv[1].get("attempts", 0), reverse=True)[:5]
     if top:
         out.append("\n📊 *Breakdown (Top 5 nach Versuchen):*")
         for coin, s in top:
-            ba = s["by_action"]
+            ba = s.get("by_action", {})
             out.append(
-                f"• {coin}: buy {ba['buy']['fails']}/{ba['buy']['attempts']} | "
-                f"sell {ba['sell']['fails']}/{ba['sell']['attempts']} | "
-                f"hold {ba['hold']['fails']}/{ba['hold']['attempts']}"
+                f"• {coin}: buy {ba.get('buy',{}).get('fails',0)}/{ba.get('buy',{}).get('attempts',0)} | "
+                f"sell {ba.get('sell',{}).get('fails',0)}/{ba.get('sell',{}).get('attempts',0)} | "
+                f"hold {ba.get('hold',{}).get('fails',0)}/{ba.get('hold',{}).get('attempts',0)}"
             )
 
     return "\n".join(out)
