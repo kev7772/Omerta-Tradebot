@@ -9,7 +9,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from binance.client import Client
-from trading import get_current_prices, get_eur_rate  # nutzt bereits Binance & EURUSDT
+from trading import get_current_prices, get_eur_rate, list_all_tradeable_coins  # jetzt mit All-Coins
+# nutzt bereits Binance & EURUSDT
 
 # === Binance API ===
 API_KEY = os.getenv("BINANCE_API_KEY")
@@ -111,7 +112,7 @@ def evaluate_decision(decision: str, percent_change: float) -> str:
 
 
 def simulate_live_decision(coin: str, price_eur: float) -> str:
-    # Simple Heuristik (Demo): sehr günstige Coins → "gekauft", sehr teure → "gehalten", sonst "verkauft"
+    # Simple Heuristik (Demo)
     if price_eur < 1.0:
         return "gekauft"
     if price_eur > 1000.0:
@@ -154,30 +155,28 @@ def run_simulation() -> str:
 
 
 def run_live_simulation() -> str:
-    """Nutzt Live-Preise, rechnet in EUR um und loggt mehrere Coins."""
+    """Nutzt Live-Preise, rechnet in EUR um und loggt ALLE handelbaren Coins."""
     print("⚙️ Starte Live-Simulation mit echten Kursdaten...")
 
     try:
-        price_map_usdt = get_current_prices()  # {'BTCUSDT': 63750.0, ...}
+        price_map_usdt = get_current_prices()
         eur_rate = get_eur_rate(price_map_usdt) or 1.0
     except Exception as e:
         return f"❌ Fehler beim Abrufen der Live-Daten: {e}"
 
     timestamp = _now_str()
-    # Auswahl beliebter Paare – kann easy erweitert werden
-    watch_symbols = ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "LTCUSDT", "SOLUSDT", "XRPUSDT"]
+    all_coins = list_all_tradeable_coins()
     log_entries = []
 
-    for sym in watch_symbols:
-        usdt_price = float(price_map_usdt.get(sym, 0.0))
+    for coin in all_coins:
+        symbol = f"{coin}USDT"
+        usdt_price = float(price_map_usdt.get(symbol, 0.0))
         if usdt_price <= 0:
             continue
 
-        coin = sym.replace("USDT", "")
         price_eur = usdt_price / eur_rate
         decision = simulate_live_decision(coin, price_eur)
 
-        # simple Success-Schätzung (rein Demo)
         success = (
             round(random.uniform(5, 25), 2) if decision == "gekauft"
             else round(random.uniform(-15, 10), 2)
@@ -204,19 +203,11 @@ def run_live_simulation() -> str:
         "info": {"watchlist": [e['coin'] for e in log_entries]}
     }])
 
-    for entry in log_entries:
-        print(f"[*] {entry['coin']} – {entry['price_eur']} € – Entscheidung: {entry['decision']}")
-
+    print(f"[*] Live-Simulation: {len(log_entries)} Coins geloggt.")
     return f"✅ Live-Simulation abgeschlossen mit {len(log_entries)} Coins."
 
 
 def get_simulation_status() -> str:
-    """
-    Liefert eine kompakte Status-Zeile für /simstatus:
-    - Anzahl Einträge
-    - Letzter Timestamp
-    - Letzter Typ (historical/live)
-    """
     logs = _load_json_list(SIM_LOG_FILE)
     meta = _load_json_list(SIM_META_FILE)
 
