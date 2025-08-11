@@ -11,6 +11,8 @@ from trading import get_profit_estimates
 from sentiment_parser import get_sentiment_data
 from crawler import get_crawler_data
 from ghost_mode import detect_stealth_entry
+from ki_features import _rsi, _ema, _pct, load_json
+from ki_model import predict_live
 
 # =========================
 # Zentrale Schwellenwerte
@@ -310,3 +312,29 @@ def run_ghost_analysis() -> list:
     # Optional: pro-Coin Sentiment-Scores anreichern, falls detect_stealth_entry das nutzt.
     # Wir passen das Format nicht hart an, sondern liefern die Rohdaten weiter.
     return detect_stealth_entry(profits, sentiment, crawler_data)
+
+def build_live_features(coin, last_prices, crawler_coin, senti_coin):
+    curr = last_prices[-1]
+    rsi = _rsi(last_prices[-30:])
+    ema12 = _ema(last_prices[-30:], 12)
+    ema26 = _ema(last_prices[-60:], 26)
+    macd = (ema12 or curr) - (ema26 or curr)
+    ret_1h = _pct(last_prices[-1], last_prices[-2]) if len(last_prices)>=2 else 0
+    ret_6h = _pct(last_prices[-1], last_prices[-7]) if len(last_prices)>=7 else 0
+    ret_24h= _pct(last_prices[-1], last_prices[-25]) if len(last_prices)>=25 else 0
+    vol_trend = (crawler_coin or {}).get("trend_score", 0.0)
+    mentions = (crawler_coin or {}).get("mentions", 0)
+    senti_score = (senti_coin or {}).get("score", 0.0)
+    row = [curr, rsi or 50.0, macd, ret_1h, ret_6h, ret_24h, vol_trend, mentions, senti_score]
+    return row
+
+def get_ki_score_for_coin(coin):
+    hist = load_json("history.json")
+    if not hist: return 0.5
+    ts = sorted(hist.keys())[-30:]
+    prices = [hist[t].get(coin) for t in ts if coin in hist[t]]
+    if len(prices) < 30: return 0.5
+    crawler = load_json("crawler_data.json").get(coin, {})
+    senti = load_json("sentiment_snapshot.json").get(coin, {})
+    row = build_live_features(coin, prices, crawler, senti)
+    return predict_live(row)
