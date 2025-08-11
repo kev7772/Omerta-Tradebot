@@ -1,4 +1,4 @@
-# trading.py — clean & EUR-consistent
+# trading.py — All-Coins-Version mit EUR-Preisen
 import os
 import json
 from datetime import datetime
@@ -8,17 +8,13 @@ from binance.client import Client
 # === API-Setup ===
 API_KEY = os.getenv("BINANCE_API_KEY")
 API_SECRET = os.getenv("BINANCE_API_SECRET")
-# Public Endpoints (get_all_tickers) funktionieren auch ohne Keys, aber wir initialisieren trotzdem
 client = Client(API_KEY, API_SECRET)
 
-HISTORY_FILE = "history.json"   # Format: { "YYYY-MM-DD": {"BTC": eur_price, ...}, ... }
+HISTORY_FILE = "history.json"
 
-# === Live-Preisumrechnung: USDT → EUR ===
+# === Hilfsfunktionen ===
 def get_eur_rate(price_map: dict) -> float:
-    """
-    EURUSDT = wie viele USDT entsprechen 1 EUR.
-    EUR-Preis = USDT-Preis / EURUSDT. Fallback: 1.0 (keine Umrechnung).
-    """
+    """Liefert EURUSDT-Kurs oder 1.0 als Fallback."""
     try:
         eurusdt = float(price_map.get("EURUSDT", 0))
         return eurusdt if eurusdt > 0 else 1.0
@@ -34,12 +30,31 @@ def _get_price_map_usdt() -> dict:
         print(f"[trading] Fehler bei get_all_tickers: {e}")
         return {}
 
-# === Portfolio abrufen (Werte in EUR) ===
+# === Alle handelbaren Coins (Spot, USDT-Paare) ===
+def list_all_tradeable_coins() -> list:
+    """
+    Holt alle handelbaren Base-Assets gegen USDT (Spot).
+    Stablecoins werden ignoriert.
+    """
+    try:
+        info = client.get_exchange_info()
+        coins = set()
+        for s in info.get("symbols", []):
+            if s.get("status") != "TRADING":
+                continue
+            if s.get("quoteAsset") != "USDT":
+                continue
+            base = s.get("baseAsset")
+            if not base or base in ["USDT", "BUSD", "USDC", "TUSD"]:
+                continue
+            coins.add(base)
+        return sorted(coins)
+    except Exception as e:
+        print(f"[trading] Fehler beim Abrufen der handelbaren Coins: {e}")
+        return []
+
+# === Portfolio (nur Coins mit USDT-Paar, in EUR) ===
 def get_portfolio() -> list:
-    """
-    Gibt Liste zurück (nur Coins mit USDT-Paar):
-    [{ 'coin': 'BTC', 'amount': 0.1234, 'price': 25123.45 (EUR), 'value': 3090.12 (EUR) }, ...]
-    """
     try:
         account = client.get_account()
         price_map = _get_price_map_usdt()
@@ -55,21 +70,15 @@ def get_portfolio() -> list:
             coin = asset.get("asset")
             if not coin or coin == "USDT":
                 continue
-
-            try:
-                free = float(asset.get("free", 0.0))
-                locked = float(asset.get("locked", 0.0))
-                total = free + locked
-            except Exception:
-                total = 0.0
-
+            free = float(asset.get("free", 0.0))
+            locked = float(asset.get("locked", 0.0))
+            total = free + locked
             if total <= 0:
                 continue
 
             symbol = f"{coin}USDT"
             usdt_price = float(price_map.get(symbol, 0.0))
             if usdt_price <= 0:
-                # kein USDT-Paar → überspringen
                 continue
 
             price_eur = round(usdt_price / eur_rate, 6)
@@ -78,29 +87,32 @@ def get_portfolio() -> list:
             holdings.append({
                 "coin": coin,
                 "amount": total,
-                "price": price_eur,   # EUR/Einheit
-                "value": value_eur    # EUR gesamt
+                "price": price_eur,
+                "value": value_eur
             })
     except Exception as e:
         print(f"[trading] Fehler bei Portfolio-Verarbeitung: {e}")
 
     return holdings
 
-# === Historie schreiben (Preise in EUR, pro Tag) ===
+# === History schreiben (für ALLE Coins) ===
 def log_history() -> None:
     """
-    Speichert tagesaktuelle EUR-Preise pro Coin in history.json.
-    Format: { 'YYYY-MM-DD': {'BTC': 25123.45, 'ETH': 1590.22, ...}, ... }
+    Speichert Tagespreise (EUR) für ALLE handelbaren Coins.
     """
-    holdings = get_portfolio()
-    if not holdings:
-        print("[trading] Kein Portfolio gefunden – History nicht aktualisiert.")
-        return
+    all_coins = list_all_tradeable_coins()
+    price_map = _get_price_map_usdt()
+    eur_rate = get_eur_rate(price_map)
 
-    # Map {coin: eur_price}
-    log_entry = {item["coin"]: float(item["price"]) for item in holdings}
+    log_entry = {}
+    for coin in all_coins:
+        symbol = f"{coin}USDT"
+        usdt_price = float(price_map.get(symbol, 0.0))
+        if usdt_price <= 0:
+            continue
+        price_eur = round(usdt_price / eur_rate, 6)
+        log_entry[coin] = price_eur
 
-    # Datum in Europe/Berlin (passt zu live_logger)
     today = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
 
     try:
@@ -128,15 +140,13 @@ def log_history() -> None:
     except Exception as e:
         print(f"[trading] Fehler beim Speichern der {HISTORY_FILE}: {e}")
 
-# === Profit-Schätzung (gegen letzten History-Tag) ===
+# === Profit-Schätzung (für ALLE Coins) ===
 def get_profit_estimates():
     """
-    Vergleicht aktuelle EUR-Preise aus get_portfolio() mit den zuletzt gespeicherten
-    Tagespreisen aus history.json (Format siehe oben).
-    Rückgabe: [{coin, old, current, percent, profit}]
+    Vergleicht aktuelle EUR-Preise aller handelbaren Coins
+    mit den zuletzt gespeicherten Tagespreisen.
     """
     try:
-        # History laden (Dict mit Tages-Keys)
         if not os.path.exists(HISTORY_FILE):
             print(f"[trading] {HISTORY_FILE} nicht gefunden.")
             return []
@@ -148,7 +158,6 @@ def get_profit_estimates():
             print("[trading] History leer oder falsches Format.")
             return []
 
-        # letzten Tag ermitteln
         days = sorted(history.keys())
         last_day = days[-1]
         old_prices_map = history.get(last_day, {})
@@ -156,21 +165,20 @@ def get_profit_estimates():
             print("[trading] Keine alten Tagespreise gefunden.")
             return []
 
-        # aktuelles Portfolio (EUR)
-        current = get_portfolio() or []
+        price_map = _get_price_map_usdt()
+        eur_rate = get_eur_rate(price_map)
+        all_coins = list_all_tradeable_coins()
+
         results = []
-
-        for pos in current:
-            symbol = pos.get('coin')
-            amount = float(pos.get('amount', 0.0))
-            current_price = float(pos.get('price', 0.0))  # EUR
-
-            if not symbol or amount <= 0 or current_price <= 0:
+        for coin in all_coins:
+            symbol = f"{coin}USDT"
+            usdt_price = float(price_map.get(symbol, 0.0))
+            if usdt_price <= 0:
                 continue
 
-            old_price = old_prices_map.get(symbol)
+            current_price = round(usdt_price / eur_rate, 6)
+            old_price = old_prices_map.get(coin)
             if old_price is None or old_price == 0:
-                # kein alter Preis -> überspringen
                 continue
 
             try:
@@ -179,12 +187,12 @@ def get_profit_estimates():
                 continue
 
             percent = ((current_price - old_price) / old_price) * 100.0
-            profit_abs = round(amount * (current_price - old_price), 2)
+            profit_abs = round(current_price - old_price, 6)
 
             results.append({
-                "coin": symbol,
+                "coin": coin,
                 "old": round(old_price, 6),
-                "current": round(current_price, 6),
+                "current": current_price,
                 "percent": round(percent, 2),
                 "profit": profit_abs
             })
@@ -195,23 +203,20 @@ def get_profit_estimates():
         print(f"[ProfitEstimate] Fehler: {e}")
         return []
 
-# === Aktuelle Preise ziehen (USDT-Map; optional) ===
+# === Aktuelle Preise holen ===
 def get_current_prices() -> dict:
-    """
-    Gibt {SYMBOL: USDT-Preis} zurück (z. B. 'BTCUSDT': 63750.0).
-    Für EUR-Preis -> teile durch EURUSDT.
-    """
+    """Gibt {SYMBOL: USDT-Preis} zurück."""
     try:
         return _get_price_map_usdt()
     except Exception as e:
         print(f"[trading] Fehler beim Abrufen aktueller Preise: {e}")
         return {}
 
-# === Simulierte Trades durchführen (einfaches Demo) ===
+# === Simulierte Trades (Demo) ===
 def simulate_trade(decision: dict, balance: float, portfolio: dict, prices: dict) -> dict:
     """
     decision: {'BTC': 'BUY'/'SELL'/...}
-    balance: EUR-Guthaben (float)
+    balance: EUR-Guthaben
     portfolio: {'BTC': menge, ...}
     prices: USDT-Preismap inkl. 'EURUSDT'
     """
