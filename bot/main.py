@@ -156,7 +156,11 @@ def cmd_commands(message):
 📝 *Logging*
 /logsnapshot — Markt-Snapshot aus Estimates loggen
 /logbinance — Markt-Snapshot direkt von Binance loggen
+
+🛵 *KI Being*
+/kistatus - Aufrufen des KI Status
 """
+
     safe_send(message.chat.id, text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
@@ -390,6 +394,17 @@ def cmd_ghostexit(message):
         safe_send(message.chat.id, msg)
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /ghostexit: {e}")
+
+@bot.message_handler(commands=['kistatus'])
+def cmd_kistatus(msg):
+    import json, os
+    from pathlib import Path
+    METRICS_PATH = "models/ki_metrics.json"
+    if Path(METRICS_PATH).exists():
+        with open(METRICS_PATH,"r") as f: m = json.load(f)
+        bot.reply_to(msg, f"🤖 KI-Status\nSamples: {m.get('n_samples')}\nAUC: {m.get('auc')}\nAccuracy: {m.get('accuracy')}\nTrain: {m.get('trained_at')}")
+    else:
+        bot.reply_to(msg, "🤖 KI-Status: Noch kein Modell trainiert.")
 
 @bot.message_handler(commands=['crawler'])
 def cmd_crawler(message):
