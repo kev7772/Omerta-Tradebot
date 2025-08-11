@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from telebot import TeleBot
+from ki_model import train_model
 
 # ==== Bot Setup (defensiv) ====
 BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
@@ -370,6 +371,23 @@ def run_scheduler():
             print(f"[Scheduler] run_pending Fehler: {e}")
             _send(f"⚠️ Scheduler-Fehler: {e}")
         time.sleep(1)
+
+def train_ki_daily():
+    res = train_model()
+    # an ADMIN schicken, wenn du möchtest
+    try:
+        from telebot import TeleBot
+        import os, json
+        BOT_TOKEN = os.getenv("BOT_TOKEN"); ADMIN_ID = int(os.getenv("ADMIN_ID","0"))
+        if BOT_TOKEN and ADMIN_ID:
+            bot = TeleBot(BOT_TOKEN)
+            msg = "🤖 KI-Training: " + (json.dumps(res, ensure_ascii=False) if res else "keine Antwort")
+            bot.send_message(ADMIN_ID, msg)
+    except Exception:
+        pass
+
+# im Scheduler registrieren (z.B. 03:15 Uhr)
+# schedule.every().day.at("03:15").do(train_ki_daily)
 
 
 # ---------------- Status für /schedulerstatus ----------------
