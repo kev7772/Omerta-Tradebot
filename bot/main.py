@@ -437,12 +437,31 @@ def cmd_ghostexit(message):
 def cmd_kistatus(msg):
     import json, os
     from pathlib import Path
-    METRICS_PATH = "models/ki_metrics.json"
-    if Path(METRICS_PATH).exists():
-        with open(METRICS_PATH,"r") as f: m = json.load(f)
-        bot.reply_to(msg, f"🤖 KI-Status\nSamples: {m.get('n_samples')}\nAUC: {m.get('auc')}\nAccuracy: {m.get('accuracy')}\nTrain: {m.get('trained_at')}")
-    else:
-        bot.reply_to(msg, "🤖 KI-Status: Noch kein Modell trainiert.")
+    METRICS_PATH = Path("models/ki_metrics.json")
+    if not METRICS_PATH.exists():
+        # Auto-Placeholder erzeugen
+        METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        placeholder = {
+            "n_samples": 0,
+            "auc": None,
+            "accuracy": 0.0,
+            "trained_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "note": "Auto-Placeholder – bitte /kitrain ausführen."
+        }
+        with open(METRICS_PATH, "w", encoding="utf-8") as f:
+            json.dump(placeholder, f, ensure_ascii=False, indent=2)
+
+    with open(METRICS_PATH, "r", encoding="utf-8") as f:
+        m = json.load(f)
+    bot.reply_to(
+        msg,
+        "🤖 KI-Status\n"
+        f"Samples: {m.get('n_samples')}\n"
+        f"AUC: {m.get('auc')}\n"
+        f"Accuracy: {m.get('accuracy')}\n"
+        f"Train: {m.get('trained_at')}"
+        + (f"\nHinweis: {m.get('note')}" if m.get('note') else "")
 
 @bot.message_handler(commands=['crawler'])
 def cmd_crawler(message):
