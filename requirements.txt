@@ -14,3 +14,4 @@ seaborn
 pytrends
 requests
 feedparser
+scikit-learn
