@@ -1,5 +1,4 @@
 # scheduler.py — clean, DST-safe (Europe/Berlin) + Auto-Datenfeeds für alle JSON-Logs
-
 from __future__ import annotations
 
 import schedule
@@ -9,7 +8,6 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from telebot import TeleBot
-from ki_model import train_model
 
 # ==== Bot Setup (defensiv) ====
 BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
@@ -38,11 +36,33 @@ from bootstrap_learning import ensure_min_learning_entries
 from logic import make_trade_decision
 from decision_logger import log_trade_decisions
 
+# KI-Training (ECHT)
+from train_ki_model import train_model
+
 # Optional für Binance-Snapshots
 try:
     from binance.client import Client
 except Exception:
     Client = None
+
+
+# ---------------- Format-Helper (wie in main.py) ----------------
+def _to_float(x) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return 0.0
+
+def fmt_eur(x) -> str:
+    return f"{_to_float(x):.2f} €"
+
+def fmt_pct(x) -> str:
+    return f"{_to_float(x):.2f}%"
+
+def fmt_amt(x, max_decimals: int = 8) -> str:
+    s = f"{_to_float(x):.{max_decimals}f}"
+    s = s.rstrip("0").rstrip(".")
+    return s if s else "0"
 
 
 # ---------------- Helper ----------------
@@ -53,7 +73,6 @@ def _send(msg, **kwargs):
         except Exception as e:
             print(f"[Telegram] Sendefehler: {e}")
 
-
 def _job(name, fn):
     try:
         return fn()
@@ -61,7 +80,6 @@ def _job(name, fn):
         print(f"[{name}] Fehler: {type(e).__name__}: {e}")
         _send(f"⚠️ {name} Fehler: {e}")
         return None
-
 
 def _schedule_daily_berlin(hour: int, minute: int, fn, tag: str | None = None):
     """
@@ -219,12 +237,18 @@ def send_autostatus():
 
         msg = "📊 Autostatus — Portfolio:\n"
         for h in portfolio:
-            msg += f"{h.get('coin')}: {h.get('amount')} → {h.get('value')} €\n"
+            coin = h.get('coin')
+            amount = fmt_amt(h.get('amount', 0))
+            value = fmt_eur(h.get('value', 0))
+            msg += f"{coin}: {amount} → {value}\n"
 
         msg += "\n💰 Gewinne:\n"
         if profits:
             for p in profits:
-                msg += f"{p.get('coin')}: {p.get('profit')} € ({p.get('percent')}%)\n"
+                coin = p.get('coin')
+                profit = fmt_eur(p.get('profit', 0))
+                percent = fmt_pct(p.get('percent', 0))
+                msg += f"{coin}: {profit} ({percent})\n"
         else:
             msg += "—\n"
 
@@ -322,6 +346,25 @@ def crawler_cycle():
         print(f"[HypeCheck] Fehler: {e}")
 
 
+# ---------------- KI-Training ----------------
+def train_ki_daily():
+    res = train_model()
+    try:
+        if bot and ADMIN_ID:
+            msg = (
+                "🤖 KI-Training abgeschlossen:\n"
+                f"• Samples: {res.get('n_samples')}\n"
+                f"• Accuracy: {res.get('accuracy')}\n"
+                f"• AUC: {res.get('auc') if res.get('auc') is not None else 'n/a'}\n"
+                f"• Stand: {res.get('trained_at')}"
+            )
+            if res.get("note"):
+                msg += f"\n• Hinweis: {res['note']}"
+            bot.send_message(ADMIN_ID, msg)
+    except Exception:
+        pass
+
+
 # ---------------- Zeitplan ----------------
 def run_scheduler():
     print("⏰ Omerta Scheduler läuft...")
@@ -350,6 +393,7 @@ def run_scheduler():
     _schedule_daily_berlin(9, 0,  lambda: _job("FeedbackLoop (Daily)", run_feedback_loop))
     _schedule_daily_berlin(10, 0, lambda: _job("ErrorAnalysis", analyze_errors))
     _schedule_daily_berlin(13, 0, lambda: _job("Simulation (Historical)", run_simulation))
+    _schedule_daily_berlin(3, 15, train_ki_daily, tag="ki_training")  # echtes KI-Training täglich 03:15
 
     print("✅ Scheduler gestartet und alle Tasks geladen.")
 
@@ -371,23 +415,6 @@ def run_scheduler():
             print(f"[Scheduler] run_pending Fehler: {e}")
             _send(f"⚠️ Scheduler-Fehler: {e}")
         time.sleep(1)
-
-def train_ki_daily():
-    res = train_model()
-    # an ADMIN schicken, wenn du möchtest
-    try:
-        from telebot import TeleBot
-        import os, json
-        BOT_TOKEN = os.getenv("BOT_TOKEN"); ADMIN_ID = int(os.getenv("ADMIN_ID","0"))
-        if BOT_TOKEN and ADMIN_ID:
-            bot = TeleBot(BOT_TOKEN)
-            msg = "🤖 KI-Training: " + (json.dumps(res, ensure_ascii=False) if res else "keine Antwort")
-            bot.send_message(ADMIN_ID, msg)
-    except Exception:
-        pass
-
-# im Scheduler registrieren (z.B. 03:15 Uhr)
-# schedule.every().day.at("03:15").do(train_ki_daily)
 
 
 # ---------------- Status für /schedulerstatus ----------------
