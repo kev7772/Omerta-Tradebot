@@ -438,11 +438,13 @@ def cmd_ghostexit(message):
 def cmd_kistatus(msg):
     import json, os
     from pathlib import Path
+    from datetime import datetime
+
     METRICS_PATH = Path("models/ki_metrics.json")
+
+    # Falls Datei fehlt: automatisch Placeholder anlegen
     if not METRICS_PATH.exists():
-        # Auto-Placeholder erzeugen
         METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        from datetime import datetime
         placeholder = {
             "n_samples": 0,
             "auc": None,
@@ -453,16 +455,21 @@ def cmd_kistatus(msg):
         with open(METRICS_PATH, "w", encoding="utf-8") as f:
             json.dump(placeholder, f, ensure_ascii=False, indent=2)
 
+    # Lesen + sauber zusammensetzen
     with open(METRICS_PATH, "r", encoding="utf-8") as f:
         m = json.load(f)
-    bot.reply_to(
-        msg,
+
+    text = (
         "🤖 KI-Status\n"
         f"Samples: {m.get('n_samples')}\n"
         f"AUC: {m.get('auc')}\n"
         f"Accuracy: {m.get('accuracy')}\n"
         f"Train: {m.get('trained_at')}"
-        + (f"\nHinweis: {m.get('note')}" if m.get('note') else "")
+    )
+    if m.get("note"):
+        text += f"\nHinweis: {m.get('note')}"
+
+    bot.reply_to(msg, text)
 
 @bot.message_handler(commands=['crawler'])
 def cmd_crawler(message):
