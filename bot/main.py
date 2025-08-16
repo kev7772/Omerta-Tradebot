@@ -1,5 +1,5 @@
 # main.py — OmertaTradeBot (clean + live_logger integriert)
-# Stand: 2025-08-10
+# Stand: 2025-08-10  (EUR- & Prozent-Formatierung integriert)
 
 import os
 import json
@@ -44,6 +44,31 @@ ADMIN_ID = int(ADMIN_ID)
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
+
+# === Format-Helper (NEU) ===
+def _to_float(x) -> float:
+    try:
+        # Strings wie "12.34" oder Decimal etc. robust in float wandeln
+        return float(x)
+    except Exception:
+        return 0.0
+
+def fmt_eur(x) -> str:
+    """Immer 2 Nachkommastellen + Euro-Symbol."""
+    return f"{_to_float(x):.2f} €"
+
+def fmt_pct(x) -> str:
+    """Immer 2 Nachkommastellen + Prozentzeichen."""
+    return f"{_to_float(x):.2f}%"
+
+def fmt_amt(x, max_decimals: int = 8) -> str:
+    """
+    Für Coin-Mengen: bis zu 8 Nachkommastellen, ohne überflüssige Nullen.
+    Beispiel: 135.2441175 -> '135.2441175', 0.22000000 -> '0.22'
+    """
+    s = f"{_to_float(x):.{max_decimals}f}"
+    s = s.rstrip("0").rstrip(".")
+    return s if s else "0"
 
 # === Flask Webhook (wie in deiner alten Main) ===
 @app.route('/')
@@ -160,7 +185,6 @@ def cmd_commands(message):
 🛵 *KI Being*
 /kistatus - Aufrufen des KI Status
 """
-
     safe_send(message.chat.id, text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
@@ -178,7 +202,10 @@ def cmd_portfolio(message):
             return
         msg = "📊 Dein Portfolio:\n"
         for h in holdings:
-            msg += f"{h.get('coin','?')}: {h.get('amount',0)} → {h.get('value',0)} €\n"
+            coin = h.get('coin', '?')
+            amount = fmt_amt(h.get('amount', 0))
+            value_eur = fmt_eur(h.get('value', 0))
+            msg += f"{coin}: {amount} → {value_eur}\n"
         safe_send(message.chat.id, msg)
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /portfolio: {e}")
@@ -193,7 +220,10 @@ def cmd_profit(message):
             return
         msg = "💰 Buchgewinne:\n"
         for p in profits:
-            msg += f"{p.get('coin','?')}: {p.get('profit',0)} € ({p.get('percent',0)}%)\n"
+            coin = p.get('coin', '?')
+            profit_eur = fmt_eur(p.get('profit', 0))
+            percent = fmt_pct(p.get('percent', 0))
+            msg += f"{coin}: {profit_eur} ({percent})\n"
         safe_send(message.chat.id, msg)
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /profit: {e}")
@@ -375,7 +405,14 @@ def cmd_ghostranking(message):
     try:
         ranking = get_ghost_performance_ranking() or []
         if ranking:
-            msg = "👑 *Top Ghost-Träger:*\n\n" + "\n".join([f"• {r.get('coin')}: {r.get('durchschnitt')} % über {r.get('anzahl')} Trades" for r in ranking[:10]])
+            # Prozent hübsch formatieren
+            lines = []
+            for r in ranking[:10]:
+                coin = r.get('coin')
+                avg = fmt_pct(r.get('durchschnitt', 0))
+                n = r.get('anzahl')
+                lines.append(f"• {coin}: {avg} über {n} Trades")
+            msg = "👑 *Top Ghost-Träger:*\n\n" + "\n".join(lines)
             safe_send(message.chat.id, msg, parse_mode="Markdown")
         else:
             safe_send(message.chat.id, "Keine abgeschlossenen Ghost-Trades.")
@@ -460,12 +497,21 @@ def cmd_autostatus(message):
         portfolio = get_portfolio() or []
         profits = get_profit_estimates() or []
         sentiment = get_sentiment_data() or {}
-        msg = "📊 Portfolio:\n"
+
+        msg = "📊 Autostatus — Portfolio:\n"
         for h in portfolio:
-            msg += f"• {h.get('coin')}: {h.get('amount')} → {h.get('value')} €\n"
+            coin = h.get('coin', '?')
+            amount = fmt_amt(h.get('amount', 0))
+            value_eur = fmt_eur(h.get('value', 0))
+            msg += f"{coin}: {amount} → {value_eur}\n"
+
         msg += "\n💰 Gewinne:\n"
         for p in profits:
-            msg += f"{p.get('coin')}: {p.get('profit')} € ({p.get('percent')}%)\n"
+            coin = p.get('coin', '?')
+            profit_eur = fmt_eur(p.get('profit', 0))
+            percent = fmt_pct(p.get('percent', 0))
+            msg += f"{coin}: {profit_eur} ({percent})\n"
+
         msg += f"\n📡 Sentiment: {str(sentiment.get('sentiment','')).upper()} ({sentiment.get('score',0)})"
         safe_send(message.chat.id, msg)
     except Exception as e:
