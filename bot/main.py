@@ -9,6 +9,7 @@ from flask import Flask, request
 from datetime import datetime
 
 # === Imports aus deinem Projekt ===
+from train_ki_model import train_model
 from analyze_learning import generate_learning_stats, export_learning_report
 from scheduler import run_scheduler, get_scheduler_status
 from live_logger import write_history, load_history_safe
@@ -535,6 +536,23 @@ def cmd_logbinance(message):
         safe_send(message.chat.id, f"📝 Binance-Snapshot geloggt: {n} Einträge.")
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /logbinance: {e}")
+
+@bot.message_handler(commands=['kitrain'])
+def cmd_kitrain(message):
+    if not is_admin(message): return
+    try:
+        metrics = train_model()
+        txt = "🤖 KI neu trainiert:\n"
+        txt += f"• Samples: {metrics.get('n_samples')}\n"
+        txt += f"• Accuracy: {metrics.get('accuracy')}\n"
+        auc = metrics.get('auc')
+        txt += f"• AUC: {auc if auc is not None else 'n/a'}\n"
+        if metrics.get("note"):
+            txt += f"• Hinweis: {metrics['note']}\n"
+        txt += f"• Stand: {metrics.get('trained_at')}"
+        safe_send(message.chat.id, txt)
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /kitrain: {e}")
 
 @bot.message_handler(commands=['selftest'])
 def cmd_selftest(message):
