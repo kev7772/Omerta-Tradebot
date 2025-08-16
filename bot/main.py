@@ -10,6 +10,7 @@ from datetime import datetime
 
 # === Imports aus deinem Projekt ===
 from train_ki_model import train_model
+from predict_ki import predict_success
 from analyze_learning import generate_learning_stats, export_learning_report
 from scheduler import run_scheduler, get_scheduler_status
 from live_logger import write_history, load_history_safe
@@ -572,6 +573,30 @@ def cmd_kitrain(message):
         safe_send(message.chat.id, txt)
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /kitrain: {e}")
+
+@bot.message_handler(commands=["kipredict"])
+def cmd_kipredict(message):
+    try:
+        args = message.text.split()
+        if len(args) < 2:
+            bot.reply_to(message, "⚠️ Bitte so benutzen: /kipredict BTC")
+            return
+        coin = args[1].upper()
+        res = predict_success(coin)
+        if "error" in res:
+            bot.reply_to(message, f"❌ {res['error']}")
+            return
+        msg = (
+            f"🤖 KI-Prognose für {res['coin']}:\n"
+            f"📊 Erfolgswahrscheinlichkeit: {res['probability_success']*100:.1f}%\n"
+            f"📈 Prediction: {'✅ Erfolg' if res['prediction']==1 else '❌ kein Erfolg'}\n"
+            f"🔹 Return 24h: {res['features']['ret_24h']:.4f}\n"
+            f"🔹 Volatilität 24h: {res['features']['vol_24h']:.4f}\n"
+            f"🕒 Stand: {res['evaluated_at']}"
+        )
+        bot.reply_to(message, msg)
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Fehler bei /kipredict: {e}")
 
 @bot.message_handler(commands=['selftest'])
 def cmd_selftest(message):
