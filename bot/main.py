@@ -37,6 +37,14 @@ from ghost_mode import (
 )
 from crawler import run_crawler, get_crawler_data   # <— wichtig: nur hier importieren
 
+# ===== JSON-STATUS: Imports (ggf. nach oben zu den anderen Imports legen) =====
+from pathlib import Path
+try:
+    from zoneinfo import ZoneInfo
+    _TZ = ZoneInfo("Europe/Berlin")
+except Exception:
+    _TZ = None  # Fallback: naive Lokalzeit
+
 # === Bot Setup ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID", "").strip()
@@ -709,6 +717,85 @@ def startup_tasks():
         run_crawler()  # einmal initial
     except Exception as e:
         print(f"[Startup] run_crawler Fehler: {e}")
+
+# ===== JSON-STATUS: Konfiguration der beobachteten Dateien =====
+# Falls einige Pfade bei dir bereits als Konstanten existieren, kannst du die Duplikate hier löschen.
+_JSON_FILES = {
+    "history.json": "📈 Kurs-History (daily)",
+    "decision_log.json": "🧭 Entscheidungs-Log",
+    "learning_log.json": "🧠 Learning-Log (bewertet)",
+    "log_simulation.json": "🧪 Simulationen",
+    "log_simulation_meta.json": "🧪 Simulationen (Meta)",
+    "crawler_data.json": "🕷️ Crawler-Daten",
+    "ghost_log.json": "👻 Ghost-Mode Log"
+}
+
+# ===== JSON-STATUS: Helfer =====
+def _fmt_dt(ts: float) -> str:
+    try:
+        dt = datetime.fromtimestamp(ts)
+        if _TZ:
+            # dt ist lokal; zur Optik einfach als lokale Zeit ausgeben
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "n/a"
+
+def _count_records(path: Path) -> str:
+    """
+    Zählt Einträge, je nach JSON-Struktur:
+    - Liste -> len(list)
+    - Dict  -> len(dict) (Top-Level Keys)
+    - Sonst -> 'n/a'
+    """
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return str(len(data))
+        if isinstance(data, dict):
+            return str(len(data.keys()))
+        return "n/a"
+    except Exception:
+        return "n/a"
+
+def _human_size(num: int) -> str:
+    for unit in ["B","KB","MB","GB"]:
+        if num < 1024.0:
+            return f"{num:.0f} {unit}"
+        num /= 1024.0
+    return f"{num:.0f} TB"
+
+def build_json_status_report() -> str:
+    lines = ["📂 *JSON-Dateien — Status*"]
+    base = Path(".").resolve()
+    for fname, label in _JSON_FILES.items():
+        p = (base / fname)
+        if p.exists() and p.is_file():
+            size = p.stat().st_size
+            mtime = p.stat().st_mtime
+            count = _count_records(p) if size > 0 else "0"
+            ok = "✅"
+            lines.append(
+                f"{ok} *{label}* — `{fname}`\n"
+                f"   • Größe: {_human_size(size)}\n"
+                f"   • Einträge: {count}\n"
+                f"   • Letzte Änderung: {_fmt_dt(mtime)}"
+            )
+        else:
+            lines.append(f"❌ *{label}* — `{fname}` nicht gefunden")
+    return "\n".join(lines)
+
+# ===== JSON-STATUS: Telegram-Command =====
+# Hinweis: 'bot' muss bereits als TeleBot-Instanz existieren.
+@bot.message_handler(commands=["jsonstatus"])
+def cmd_jsonstatus(message):
+    try:
+        report = build_json_status_report()
+        # Markdown für fette Titel/Monospace Dateinamen:
+        bot.reply_to(message, report, parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Fehler bei /jsonstatus: {e}")
 
 # === Start ===
 if __name__ == '__main__':
