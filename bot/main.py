@@ -1,5 +1,5 @@
 # main.py — OmertaTradeBot (clean + live_logger integriert)
-# Stand: 2025-08-10  (EUR- & Prozent-Formatierung integriert)
+# Stand: 2025-08-19  (EUR- & Prozent-Formatierung integriert, Simulator-Wrapper eingebaut)
 
 import os
 import json
@@ -14,7 +14,12 @@ from predict_ki import predict_success
 from analyze_learning import generate_learning_stats, export_learning_report
 from scheduler import run_scheduler, get_scheduler_status
 from live_logger import write_history, load_history_safe
-from simulator import run_simulation, run_live_simulation
+# NEU: Simulator-Wrapper statt direkter Funktionen
+from simulator import (
+    log_live_simulation_and_decisions,
+    log_historical_simulation_and_decisions,
+    get_simulation_status,
+)
 from logic import (
     recommend_trades,
     should_trigger_panic,
@@ -164,6 +169,7 @@ def cmd_commands(message):
 /schedulerstatus — Aktive Tasks anzeigen
 /crawlerstatus — Letzte Crawler-Analyse
 /crawler — Crawler jetzt starten
+/jsonstatus — Status deiner JSON-Dateien
 
 📈 *Trading & Analyse*
 /portfolio — Zeigt dein Portfolio
@@ -175,12 +181,15 @@ def cmd_commands(message):
 
 🧠 *Lernen*
 /learninglog — Lernstatistik anzeigen
+/learningstats — Lern-KPIs (30 Tage)
 /forcelearn — Feedback-Learning starten
 /heatmap — Fehleranalyse als Heatmap
 
 🧪 *Simulation*
-/simulate — Backtest starten
-/livesim — Live-Simulation
+/simulate — Historisches Szenario simulieren (loggt alles)
+/histsim — Alias für historisches Szenario
+/livesim — Live-Simulation (loggt alle Coins)
+/simstatus — Status der letzten Simulationen
 
 👻 *Ghost Mode*
 /ghostmode — Scannt neue Ghost Entries
@@ -192,8 +201,10 @@ def cmd_commands(message):
 /logsnapshot — Markt-Snapshot aus Estimates loggen
 /logbinance — Markt-Snapshot direkt von Binance loggen
 
-🛵 *KI Being*
-/kistatus - Aufrufen des KI Status
+🛵 *KI*
+/kistatus — KI-Status
+/kitrain — KI neu trainieren
+/kipredict BTC — KI-Prognose für Coin
 """
     safe_send(message.chat.id, text, parse_mode="Markdown")
 
@@ -238,23 +249,35 @@ def cmd_profit(message):
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /profit: {e}")
 
-@bot.message_handler(commands=['simulate'])
+# ——— Simulation: Historisch
+@bot.message_handler(commands=['simulate', 'histsim'])
 def cmd_simulate(message):
     if not is_admin(message): return
     try:
-        run_simulation()
-        safe_send(message.chat.id, "🧪 Simulation abgeschlossen.")
+        result = log_historical_simulation_and_decisions()
+        safe_send(message.chat.id, result)
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /simulate: {e}")
 
+# ——— Simulation: Live (alle Coins)
 @bot.message_handler(commands=['livesim'])
 def cmd_livesim(message):
     if not is_admin(message): return
     try:
-        result = run_live_simulation()
+        result = log_live_simulation_and_decisions()
         safe_send(message.chat.id, result or "📭 Keine Daten für Live-Simulation.")
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /livesim: {e}")
+
+# ——— Simulation: Status
+@bot.message_handler(commands=['simstatus'])
+def cmd_simstatus(message):
+    if not is_admin(message): return
+    try:
+        status = get_simulation_status()
+        safe_send(message.chat.id, status)
+    except Exception as e:
+        safe_send(message.chat.id, f"❌ Fehler bei /simstatus: {e}")
 
 @bot.message_handler(commands=['recommend'])
 def cmd_recommend(message):
@@ -667,59 +690,7 @@ def cmd_selftest(message):
     except Exception as e:
         safe_send(message.chat.id, f"❌ Fehler bei /selftest: {e}")
 
-# === Startup Tasks (asynchron) ===
-def startup_tasks():
-    # Dateien anlegen, falls nicht vorhanden
-    try:
-        ensure_files = {
-            "history.json": [],
-            "ghost_log.json": [],
-            "learning_log.json": [],
-            "crawler_data.json": {}   # für Crawler strukturierter
-        }
-        for path, default in ensure_files.items():
-            if not os.path.exists(path):
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(default, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[Startup] Datei-Init Fehler: {e}")
-
-    # Initiale Logs/Analysen
-    wrote = 0
-    try:
-        wrote = log_market_snapshot_from_estimates() or 0
-    except Exception as e:
-        print(f"[Startup] Estimates Snapshot Fehler: {e}")
-
-    if wrote == 0:
-        try:
-            log_market_snapshot_from_binance()
-        except Exception as e:
-            print(f"[Startup] Binance Snapshot Fehler: {e}")
-
-    # Restliche Startprozesse
-    try:
-        run_simulation()
-    except Exception as e:
-        print(f"[Startup] run_simulation Fehler: {e}")
-
-    try:
-        log_trade_decisions(make_trade_decision())
-    except Exception as e:
-        print(f"[Startup] decision_log Fehler: {e}")
-
-    try:
-        run_feedback_loop()
-    except Exception as e:
-        print(f"[Startup] feedback_loop Fehler: {e}")
-
-    try:
-        run_crawler()  # einmal initial
-    except Exception as e:
-        print(f"[Startup] run_crawler Fehler: {e}")
-
 # ===== JSON-STATUS: Konfiguration der beobachteten Dateien =====
-# Falls einige Pfade bei dir bereits als Konstanten existieren, kannst du die Duplikate hier löschen.
 _JSON_FILES = {
     "history.json": "📈 Kurs-History (daily)",
     "decision_log.json": "🧭 Entscheidungs-Log",
@@ -735,7 +706,6 @@ def _fmt_dt(ts: float) -> str:
     try:
         dt = datetime.fromtimestamp(ts)
         if _TZ:
-            # dt ist lokal; zur Optik einfach als lokale Zeit ausgeben
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         return dt.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
@@ -787,15 +757,66 @@ def build_json_status_report() -> str:
     return "\n".join(lines)
 
 # ===== JSON-STATUS: Telegram-Command =====
-# Hinweis: 'bot' muss bereits als TeleBot-Instanz existieren.
 @bot.message_handler(commands=["jsonstatus"])
 def cmd_jsonstatus(message):
     try:
         report = build_json_status_report()
-        # Markdown für fette Titel/Monospace Dateinamen:
         bot.reply_to(message, report, parse_mode="Markdown")
     except Exception as e:
         bot.reply_to(message, f"⚠️ Fehler bei /jsonstatus: {e}")
+
+# === Startup Tasks (asynchron) ===
+def startup_tasks():
+    # Dateien anlegen, falls nicht vorhanden
+    try:
+        ensure_files = {
+            "history.json": [],
+            "ghost_log.json": [],
+            "learning_log.json": [],
+            "crawler_data.json": {}   # für Crawler strukturierter
+        }
+        for path, default in ensure_files.items():
+            if not os.path.exists(path):
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(default, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[Startup] Datei-Init Fehler: {e}")
+
+    # Initiale Logs/Analysen
+    wrote = 0
+    try:
+        wrote = log_market_snapshot_from_estimates() or 0
+    except Exception as e:
+        print(f"[Startup] Estimates Snapshot Fehler: {e}")
+
+    if wrote == 0:
+        try:
+            log_market_snapshot_from_binance()
+        except Exception as e:
+            print(f"[Startup] Binance Snapshot Fehler: {e}")
+
+    # Historische Simu direkt loggen (statt altem run_simulation())
+    try:
+        msg = log_historical_simulation_and_decisions()
+        print(f"[Startup] {msg}")
+    except Exception as e:
+        print(f"[Startup] historical-sim Fehler: {e}")
+
+    # Erste Entscheidungen + Learning
+    try:
+        log_trade_decisions(make_trade_decision())
+    except Exception as e:
+        print(f"[Startup] decision_log Fehler: {e}")
+
+    try:
+        run_feedback_loop()
+    except Exception as e:
+        print(f"[Startup] feedback_loop Fehler: {e}")
+
+    try:
+        run_crawler()  # einmal initial
+    except Exception as e:
+        print(f"[Startup] run_crawler Fehler: {e}")
 
 # === Start ===
 if __name__ == '__main__':
