@@ -1,5 +1,5 @@
-# decision_logger.py — loggt ALLE Einträge, dedupe & merge, backward-compatible
-# Stand: 2025-08-19
+# decision_logger.py — loggt ALLE Einträge, dedupe & merge
+# Stand: 2025-08-23 (Fix: 'decision' wird mitgeschrieben)
 
 from __future__ import annotations
 import json
@@ -12,9 +12,9 @@ DECISION_LOG_FILE = "decision_log.json"
 
 DecisionItem = Dict[str, Any]
 DecisionsInput = Union[
-    Dict[str, Union[str, Dict[str, Any]]],   # {"BTC":"buy", "ETH":{"action":"hold","confidence":0.7}}
-    List[DecisionItem],                      # [{"coin":"BTC","action":"buy","percent":-2.1,...}, ...]
-    List[Tuple[str, str]]                    # [("BTC","buy"), ("ETH","sell")]
+    Dict[str, Union[str, Dict[str, Any]]],
+    List[DecisionItem],
+    List[Tuple[str, str]]
 ]
 
 # ---------- intern ----------
@@ -58,17 +58,12 @@ def _to_float_or_none(x: Any) -> Optional[float]:
 def _normalize_decisions(decisions: DecisionsInput,
                          *,
                          default_source: Optional[str] = None) -> List[DecisionItem]:
-    """
-    Akzeptiert dict/list/tuple-Formate und erzeugt eine Liste standardisierter Einträge.
-    Unterstützte Felder: coin, action, signal, percent, price, confidence, reason, source
-    """
     out: List[DecisionItem] = []
     if decisions is None:
         return out
 
     def _mk_item(coin: Any, payload: Dict[str, Any]) -> DecisionItem:
         coin_norm = _normalize_coin(coin)
-        # action: nutze 'action', sonst 'signal', sonst 'hold'
         action = _normalize_action(payload.get("action") or payload.get("signal") or "hold")
         return {
             "coin": coin_norm,
@@ -79,7 +74,6 @@ def _normalize_decisions(decisions: DecisionsInput,
             "confidence": _to_float_or_none(payload.get("confidence")),
             "reason": payload.get("reason"),
             "source": payload.get("source", default_source),
-            # beliebige Zusatzfelder beibehalten
             **{k: v for k, v in payload.items()
                if k not in {"action", "signal", "percent", "price", "confidence", "reason", "source", "coin"}}
         }
@@ -102,16 +96,11 @@ def _normalize_decisions(decisions: DecisionsInput,
     return out
 
 def _merge_entry(old: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merge-Strategie: neue Werte überschreiben leere/None,
-    percent/price/confidence werden aktualisiert, reason/source werden aktualisiert wenn vorhanden.
-    """
     merged = dict(old)
-    for k in ("action", "signal", "percent", "price", "confidence", "reason", "source"):
+    for k in ("action", "decision", "signal", "percent", "price", "confidence", "reason", "source"):
         v = new.get(k)
         if v is not None and v != "":
             merged[k] = v
-    # weitere Felder aus new übernehmen
     for k, v in new.items():
         if k not in merged or merged.get(k) in (None, "", []):
             merged[k] = v
@@ -125,15 +114,6 @@ def log_trade_decisions(decisions: DecisionsInput,
                         extra_meta: Optional[Dict[str, Any]] = None,
                         dedupe: bool = True,
                         dedupe_key: str = "coin_date_source") -> int:
-    """
-    Hängt Entscheidungen an decision_log.json an (atomar) — für ALLE übergebenen Coins.
-    - decisions: dict/list/tuples (siehe _normalize_decisions)
-    - source: z. B. "live-sim", "strategy_v2", "ghost_exit" (falls in Items kein source steht)
-    - extra_meta: wird pro Eintrag unter "meta" mitgeschrieben
-    - dedupe: True -> Duplikate pro Schlüssel werden gemerged statt verdoppelt
-    - dedupe_key: "coin_date" | "coin_date_source"
-    Rückgabe: Anzahl neu hinzugefügter ODER gemergter Einträge.
-    """
     normalized = _normalize_decisions(decisions, default_source=source)
     if not normalized:
         print("[DecisionLog] Keine validen Entscheidungen erhalten.")
@@ -144,11 +124,9 @@ def log_trade_decisions(decisions: DecisionsInput,
     date_str = _utc_date()
     ts_iso = _utc_iso()
 
-    # Index für schnelles Deduplizieren
     index = {}
     if dedupe:
         for i, e in enumerate(log):
-            key = None
             if dedupe_key == "coin_date_source":
                 key = (e.get("coin"), e.get("date"), e.get("source"))
             else:
@@ -162,12 +140,13 @@ def log_trade_decisions(decisions: DecisionsInput,
         if not coin:
             continue
 
+        action = item.get("action", "hold")
+
         entry_base = {
-            # Abwärtskompatible Felder:
             "date": date_str,            # YYYY-MM-DD
             "coin": coin,
-            "action": item.get("action", "hold"),
-            # neue Felder:
+            "action": action,
+            "decision": action,          # <<< WICHTIG: Alias fürs Learning
             "timestamp": ts_iso,         # ISO-UTC
             "signal": item.get("signal"),
             "percent": item.get("percent"),
@@ -179,7 +158,6 @@ def log_trade_decisions(decisions: DecisionsInput,
         if extra_meta:
             entry_base["meta"] = extra_meta
 
-        # zusätzl. freie Felder übernehmen
         for k, v in item.items():
             if k not in entry_base:
                 entry_base[k] = v
@@ -189,9 +167,7 @@ def log_trade_decisions(decisions: DecisionsInput,
                 k = (entry_base["coin"], entry_base["date"], entry_base.get("source"))
             else:
                 k = (entry_base["coin"], entry_base["date"])
-
             if k in index:
-                # MERGE mit bestehendem Eintrag
                 pos = index[k]
                 log[pos] = _merge_entry(log[pos], entry_base)
                 changed += 1
@@ -206,15 +182,7 @@ def log_trade_decisions(decisions: DecisionsInput,
     print(f"📥 Trade-Entscheidungen geloggt ({date_str}): {changed} Einträge")
     return changed
 
-# Optional: direkter Helper, falls du „on demand“ aus logic ziehen willst
 def log_from_logic(make_trade_decision_fn) -> int:
-    """
-    Ruft make_trade_decision_fn() auf und versucht, daraus Entscheidungen zu extrahieren.
-    Erwartete Rückgaben:
-      - dict {coin: action | {action, confidence, reason, percent, price}}
-      - list[dict{coin, action, percent, price, ...}]
-      - list[tuple(coin, action)]
-    """
     try:
         decisions = make_trade_decision_fn()
     except Exception as e:
