@@ -30,26 +30,20 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat()
 
 def _parse_ts(ts_str: str) -> datetime:
-    # tolerante Parser-Kette
     for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z",
                 "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
                 "%Y-%m-%d"):
         try:
             dt = datetime.strptime(ts_str, fmt)
-            # falls naive -> TZ annehmen
             if dt.tzinfo is None and TZ:
                 dt = dt.replace(tzinfo=TZ)
             return dt
         except Exception:
             continue
-    # letzter Versuch: fromisoformat
-    try:
-        dt = datetime.fromisoformat(ts_str)
-        if dt.tzinfo is None and TZ:
-            dt = dt.replace(tzinfo=TZ)
-        return dt
-    except Exception as e:
-        raise ValueError(f"Ungültiges Zeitformat: {ts_str}") from e
+    dt = datetime.fromisoformat(ts_str)
+    if dt.tzinfo is None and TZ:
+        dt = dt.replace(tzinfo=TZ)
+    return dt
 
 def _read_json_safely(path: str, default):
     try:
@@ -87,7 +81,6 @@ def log_learning_result(coin: str, decision: str, change: float) -> None:
 # ---------------------------
 
 def _eligible_for_eval(entry: Dict[str, Any], cutoff_days: int) -> bool:
-    """Nur Einträge ohne evaluated_at und älter als cutoff_days."""
     if entry.get("evaluated_at"):
         return False
     ts = entry.get("timestamp")
@@ -107,11 +100,6 @@ def _mark_evaluated(entry: Dict[str, Any]) -> None:
     entry["evaluated_at"] = _iso(now_dt())
 
 def evaluate_pending_learnings(evaluation_delay_days: int = EVAL_DELAY_DAYS, max_retry: int = MAX_RETRY) -> None:
-    """
-    Prüft offene Entscheidungen und bewertet sie nach `evaluation_delay_days`.
-    Bei fehlenden Kursdaten: retry_count++, bis max_retry erreicht.
-    Sobald bewertet: Eintrag wird mit evaluated_at markiert (idempotent).
-    """
     logs = _read_json_safely(DECISION_LOG, default=[])
     if not isinstance(logs, list):
         print("❌ Fehler: decision_log.json ist beschädigt oder kein Listentyp.")
@@ -126,29 +114,24 @@ def evaluate_pending_learnings(evaluation_delay_days: int = EVAL_DELAY_DAYS, max
     still_open = 0
 
     for entry in logs:
-        # Sicherheit: Normalisierung minimaler Felder
         coin = str(entry.get("coin", "")).upper()
-        decision = entry.get("decision", "")
+        decision = entry.get("decision") or entry.get("action") or ""   # <<< Fix
         ts_str = entry.get("timestamp")
 
-        # Wenn bereits bewertet, direkt übernehmen
         if entry.get("evaluated_at"):
             updated.append(entry)
             continue
 
-        # Nicht alt genug? offen lassen
         if not _eligible_for_eval(entry, evaluation_delay_days):
             updated.append(entry)
             continue
 
-        # Bewertung versuchen
         try:
             created_dt = _parse_ts(ts_str)
             since_date = created_dt.strftime("%Y-%m-%d")
             change = get_change_since(coin, since_date)
 
             if change is not None:
-                # Lernen + Loggen
                 learn_from_decision(coin, decision, change)
                 log_learning_result(coin, decision, change)
                 _mark_evaluated(entry)
@@ -156,21 +139,18 @@ def evaluate_pending_learnings(evaluation_delay_days: int = EVAL_DELAY_DAYS, max
                 learned_count += 1
                 print(f"📘 Gelernt: {coin} → {decision} → {round(change, 2)}%")
             else:
-                # Retry-Logik
                 _increment_retry(entry)
                 if entry["retry_count"] <= max_retry:
-                    updated.append(entry)  # bleibt offen
+                    updated.append(entry)
                     still_open += 1
                     print(f"⚠️ Keine Kursdaten für {coin} seit {since_date}. Retry {entry['retry_count']}/{max_retry}.")
                 else:
-                    # Max. Versuche erreicht: als evaluated markieren, aber Hinweis setzen
                     entry["eval_note"] = "max_retry_reached_no_data"
                     _mark_evaluated(entry)
                     updated.append(entry)
                     print(f"⛔ Max. Retries erreicht für {coin} ({since_date}). Markiere als abgeschlossen.")
 
         except Exception as e:
-            # Nicht verlieren – offen lassen und Retry zählen
             _increment_retry(entry)
             updated.append(entry)
             still_open += 1
@@ -179,6 +159,5 @@ def evaluate_pending_learnings(evaluation_delay_days: int = EVAL_DELAY_DAYS, max
     _write_json_safely(DECISION_LOG, updated)
     print(f"✅ Lernbewertung: {learned_count} gelernt, {still_open} offen.")
 
-# Optional: direkt ausführbar
 if __name__ == "__main__":
     evaluate_pending_learnings()
